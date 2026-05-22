@@ -33,6 +33,10 @@ It provides:
 - device permission setup,
 - and a restricted privileged helper.
 
+## Current UI
+
+![Cardputer Zero OS greeter](docs/assets/zero-os-current-greeter-320x170.png)
+
 It does not provide:
 
 - a launcher home screen,
@@ -175,4 +179,3 @@ More detail: [docs/zero-shell-interface.md](docs/zero-shell-interface.md)
 - [docs/install.md](docs/install.md)
 - [docs/zero-shell-interface.md](docs/zero-shell-interface.md)
 - [docs/spec.md](docs/spec.md)
-

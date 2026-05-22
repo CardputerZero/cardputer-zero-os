@@ -53,3 +53,11 @@ Linux input events.
 
 It is not a replacement for Pi OS `lightdm` on HDMI. HDMI and the normal Pi OS
 graphical desktop remain part of the base OS/recovery surface.
+
+## Visual System
+
+The greeter follows the shared Zero visual system documented in
+[`zero-visual-system.md`](zero-visual-system.md).
+
+The detailed login, user selector, and power-menu UI behavior is documented in
+[`greeter-ui.md`](greeter-ui.md).

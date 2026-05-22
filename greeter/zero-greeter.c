@@ -1,5 +1,6 @@
 #include "pam_auth.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -15,6 +16,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define MAX_USERS 64
@@ -25,6 +27,13 @@
 #define FB_HEIGHT 170
 #define FB_BYTES_PER_PIXEL 2
 #define FB_SIZE (FB_WIDTH * FB_HEIGHT * FB_BYTES_PER_PIXEL)
+
+#define TOP_BAR_H 20
+#define BOTTOM_BAR_H 20
+#define BOTTOM_BAR_Y (FB_HEIGHT - BOTTOM_BAR_H)
+
+#define RGB565_CONST(r, g, b) \
+    (uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xF8) << 3) | ((b) >> 3))
 
 struct user_entry {
     char name[256];
@@ -47,19 +56,27 @@ struct input_set {
     int shift;
 };
 
-static uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b)
-{
-    return (uint16_t)(((r & 0xF8) << 8) | ((g & 0xF8) << 3) | (b >> 3));
-}
+enum ui_mode {
+    UI_LOGIN,
+    UI_USER_MENU,
+    UI_POWER_MENU,
+    UI_AUTHENTICATING,
+    UI_STARTING_SESSION
+};
 
-static const uint16_t COLOR_PANEL = 0x10A5;
-static const uint16_t COLOR_PANEL_2 = 0x18E7;
-static const uint16_t COLOR_TEXT = 0xE79C;
-static const uint16_t COLOR_MUTED = 0x8C71;
-static const uint16_t COLOR_ACCENT = 0x4D7F;
-static const uint16_t COLOR_ERROR = 0xF9A6;
-static const uint16_t COLOR_FIELD = 0x0000;
-static const uint16_t COLOR_BUTTON = 0x3D5F;
+static const uint16_t COLOR_ZERO_BG = RGB565_CONST(0xE9, 0xE4, 0xD5);
+static const uint16_t COLOR_PANEL = RGB565_CONST(0xF4, 0xF0, 0xE6);
+static const uint16_t COLOR_TASK_BUTTON = RGB565_CONST(0xEF, 0xE8, 0xD9);
+static const uint16_t COLOR_ICON_WELL = RGB565_CONST(0xF8, 0xF4, 0xEA);
+static const uint16_t COLOR_INK = RGB565_CONST(0x17, 0x17, 0x17);
+static const uint16_t COLOR_LINE = RGB565_CONST(0x2A, 0x2A, 0x2A);
+static const uint16_t COLOR_MUTED = RGB565_CONST(0x6E, 0x6A, 0x61);
+static const uint16_t COLOR_SOFT_LINE = RGB565_CONST(0xBB, 0xB1, 0x9E);
+static const uint16_t COLOR_GRID_DOT = RGB565_CONST(0xC9, 0xC1, 0xAE);
+static const uint16_t COLOR_ACCENT = RGB565_CONST(0xE6, 0x6A, 0x2C);
+static const uint16_t COLOR_OK = RGB565_CONST(0x3A, 0x7D, 0x44);
+static const uint16_t COLOR_WARN = RGB565_CONST(0xB9, 0x4A, 0x2C);
+static const uint16_t COLOR_SHADOW = RGB565_CONST(0xBD, 0xB5, 0xA4);
 
 static const uint8_t font5x7[96][5] = {
     {0x00,0x00,0x00,0x00,0x00},{0x00,0x00,0x5F,0x00,0x00},{0x00,0x07,0x00,0x07,0x00},{0x14,0x7F,0x14,0x7F,0x14},
@@ -187,6 +204,11 @@ static void stroke_rect(struct framebuffer *fb, int x, int y, int w, int h, uint
     fill_rect(fb, x + w - 1, y, 1, h, color);
 }
 
+static int text_width(const char *text, int scale)
+{
+    return text == NULL ? 0 : (int)strlen(text) * 6 * scale;
+}
+
 static void draw_char(struct framebuffer *fb, int x, int y, char ch, uint16_t color, int scale)
 {
     unsigned char uch = (unsigned char)ch;
@@ -214,63 +236,356 @@ static void draw_text(struct framebuffer *fb, int x, int y, const char *text, ui
     }
 }
 
+static void draw_text_centered(struct framebuffer *fb, int cx, int y, const char *text, uint16_t color, int scale)
+{
+    draw_text(fb, cx - text_width(text, scale) / 2, y, text, color, scale);
+}
+
+static void draw_text_right(struct framebuffer *fb, int right, int y, const char *text, uint16_t color, int scale)
+{
+    draw_text(fb, right - text_width(text, scale), y, text, color, scale);
+}
+
+static void sanitize_ascii_label(const char *input, char *out, size_t out_size)
+{
+    size_t pos = 0;
+    int last_space = 0;
+
+    if (out_size == 0) {
+        return;
+    }
+
+    for (const unsigned char *p = (const unsigned char *)input;
+         p != NULL && *p != '\0' && pos + 1 < out_size;
+         p++) {
+        unsigned char ch = *p;
+        if (ch >= 0x80) {
+            continue;
+        }
+        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) {
+            out[pos++] = (char)ch;
+            last_space = 0;
+        } else if ((ch == ' ' || ch == '-' || ch == '_') && pos > 0 && !last_space) {
+            out[pos++] = ' ';
+            last_space = 1;
+        }
+    }
+
+    while (pos > 0 && out[pos - 1] == ' ') {
+        pos--;
+    }
+    out[pos] = '\0';
+}
+
+static void current_time_text(char out[6])
+{
+    time_t raw = time(NULL);
+    struct tm local_time;
+
+    if (raw == (time_t)-1 || localtime_r(&raw, &local_time) == NULL) {
+        snprintf(out, 6, "--:--");
+        return;
+    }
+    snprintf(out, 6, "%02d:%02d", local_time.tm_hour, local_time.tm_min);
+}
+
+static int read_battery_percent(void)
+{
+    DIR *dir = opendir("/sys/class/power_supply");
+    if (dir == NULL) {
+        return -1;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+
+        char path[512];
+        snprintf(path, sizeof(path), "/sys/class/power_supply/%s/capacity", entry->d_name);
+        FILE *file = fopen(path, "r");
+        if (file == NULL) {
+            continue;
+        }
+
+        int value = -1;
+        int ok = fscanf(file, "%d", &value) == 1;
+        fclose(file);
+        if (ok) {
+            closedir(dir);
+            if (value < 0) {
+                return -1;
+            }
+            if (value > 100) {
+                return 100;
+            }
+            return value;
+        }
+    }
+
+    closedir(dir);
+    return -1;
+}
+
+static void draw_power_icon(struct framebuffer *fb, int x, int y, uint16_t color)
+{
+    fill_rect(fb, x + 4, y, 2, 5, color);
+    fill_rect(fb, x + 2, y + 3, 1, 2, color);
+    fill_rect(fb, x + 7, y + 3, 1, 2, color);
+    fill_rect(fb, x + 1, y + 5, 1, 3, color);
+    fill_rect(fb, x + 8, y + 5, 1, 3, color);
+    fill_rect(fb, x + 2, y + 8, 6, 1, color);
+}
+
+static void draw_user_icon(struct framebuffer *fb, int x, int y, uint16_t color)
+{
+    fill_rect(fb, x + 3, y, 4, 1, color);
+    fill_rect(fb, x + 2, y + 1, 1, 3, color);
+    fill_rect(fb, x + 7, y + 1, 1, 3, color);
+    fill_rect(fb, x + 3, y + 4, 4, 1, color);
+    fill_rect(fb, x + 1, y + 7, 8, 1, color);
+    fill_rect(fb, x, y + 8, 1, 3, color);
+    fill_rect(fb, x + 9, y + 8, 1, 3, color);
+}
+
+static void draw_battery(struct framebuffer *fb, int x, int y, int percent)
+{
+    stroke_rect(fb, x, y, 22, 9, COLOR_LINE);
+    fill_rect(fb, x + 22, y + 3, 2, 3, COLOR_LINE);
+    if (percent >= 0) {
+        int fill = (percent * 18) / 100;
+        if (fill < 0) {
+            fill = 0;
+        }
+        if (fill > 18) {
+            fill = 18;
+        }
+        fill_rect(fb, x + 2, y + 2, fill, 5, percent >= 25 ? COLOR_OK : COLOR_WARN);
+    }
+}
+
 static void draw_password_dots(struct framebuffer *fb, int x, int y, size_t count)
 {
-    size_t max_dots = count > 18 ? 18 : count;
+    size_t max_dots = count > 12 ? 12 : count;
     for (size_t i = 0; i < max_dots; i++) {
-        fill_rect(fb, x + (int)i * 9, y + 5, 5, 5, COLOR_TEXT);
+        fill_rect(fb, x + (int)i * 7, y + 5, 4, 4, COLOR_INK);
     }
 }
 
 static void draw_background(struct framebuffer *fb)
 {
-    for (int y = 0; y < FB_HEIGHT; y++) {
-        uint16_t line = rgb565((uint8_t)(7 + y / 7), (uint8_t)(12 + y / 9), (uint8_t)(22 + y / 4));
-        fill_rect(fb, 0, y, FB_WIDTH, 1, line);
+    fill_rect(fb, 0, 0, FB_WIDTH, FB_HEIGHT, COLOR_ZERO_BG);
+
+    for (int yy = TOP_BAR_H + 8; yy < BOTTOM_BAR_Y - 4; yy += 8) {
+        for (int xx = 8; xx < FB_WIDTH; xx += 8) {
+            put_pixel(fb, xx, yy, COLOR_GRID_DOT);
+        }
     }
-    fill_rect(fb, 0, 0, FB_WIDTH, 4, COLOR_ACCENT);
+}
+
+static void draw_topbar(struct framebuffer *fb)
+{
+    char time_text[6];
+    char battery_text[8];
+    int battery = read_battery_percent();
+
+    current_time_text(time_text);
+    if (battery > 100) {
+        battery = 100;
+    }
+    fill_rect(fb, 0, 0, FB_WIDTH, TOP_BAR_H, COLOR_PANEL);
+    stroke_rect(fb, 0, 0, FB_WIDTH, TOP_BAR_H, COLOR_LINE);
+    draw_text(fb, 6, 5, time_text, COLOR_INK, 1);
+    fill_rect(fb, 112, TOP_BAR_H + 1, 96, 3, COLOR_ACCENT);
+
+    draw_text(fb, 222, 5, "LOGIN", COLOR_MUTED, 1);
+    if (battery >= 0) {
+        snprintf(battery_text, sizeof(battery_text), "%d%%", battery);
+    } else {
+        snprintf(battery_text, sizeof(battery_text), "--%%");
+    }
+    draw_text_right(fb, 286, 5, battery_text, COLOR_INK, 1);
+    draw_battery(fb, 292, 5, battery);
+}
+
+static void draw_bottombar(struct framebuffer *fb)
+{
+    fill_rect(fb, 0, BOTTOM_BAR_Y, FB_WIDTH, BOTTOM_BAR_H, COLOR_PANEL);
+    stroke_rect(fb, 0, BOTTOM_BAR_Y, FB_WIDTH, BOTTOM_BAR_H, COLOR_LINE);
+
+    fill_rect(fb, 0, BOTTOM_BAR_Y, 64, BOTTOM_BAR_H, COLOR_TASK_BUTTON);
+    stroke_rect(fb, 0, BOTTOM_BAR_Y, 64, BOTTOM_BAR_H, COLOR_LINE);
+    draw_power_icon(fb, 8, BOTTOM_BAR_Y + 5, COLOR_INK);
+    draw_text(fb, 22, BOTTOM_BAR_Y + 6, "POWER", COLOR_INK, 1);
+
+    draw_text(fb, 80, BOTTOM_BAR_Y + 6, "TAB USER", COLOR_MUTED, 1);
+    draw_text(fb, 166, BOTTOM_BAR_Y + 6, "ENTER LOGIN", COLOR_INK, 1);
+    draw_text(fb, 276, BOTTOM_BAR_Y + 6, "ESC", COLOR_MUTED, 1);
+}
+
+static const char *status_message(enum ui_mode mode, const char *message, int error)
+{
+    if (mode == UI_AUTHENTICATING) {
+        return "AUTHENTICATING";
+    }
+    if (mode == UI_STARTING_SESSION) {
+        return "SESSION STARTING";
+    }
+    if (message != NULL && message[0] != '\0') {
+        return message;
+    }
+    return error ? "AUTH FAILED" : "PAM AUTHENTICATION";
+}
+
+static void draw_login_panel(struct framebuffer *fb,
+                             const struct user_entry *users,
+                             int user_count,
+                             int selected,
+                             const char *password,
+                             const char *message,
+                             int error,
+                             enum ui_mode mode)
+{
+    char user_label[48];
+    const int x = 60;
+    const int y = 34;
+    const int w = 200;
+    const int h = 94;
+    const int field_x = 116;
+    const int field_w = 126;
+    uint16_t pass_border = error ? COLOR_WARN : COLOR_ACCENT;
+
+    fill_rect(fb, x + 4, y + 4, w, h, COLOR_SHADOW);
+    fill_rect(fb, x, y, w, h, COLOR_PANEL);
+    stroke_rect(fb, x, y, w, h, COLOR_LINE);
+
+    draw_text(fb, x + 16, y + 14, "CARDPUTER ZERO", COLOR_INK, 1);
+    draw_text(fb, x + 16, y + 27, mode == UI_USER_MENU ? "SELECT USER" : "GUI LOGIN", COLOR_MUTED, 1);
+
+    draw_text(fb, x + 16, y + 47, "USER", COLOR_MUTED, 1);
+    fill_rect(fb, field_x, y + 40, field_w, 18, COLOR_ICON_WELL);
+    stroke_rect(fb, field_x, y + 40, field_w, 18, COLOR_LINE);
+    draw_user_icon(fb, field_x + 6, y + 45, COLOR_INK);
+    if (user_count > 0) {
+        sanitize_ascii_label(users[selected].name, user_label, sizeof(user_label));
+        if (user_label[0] == '\0') {
+            snprintf(user_label, sizeof(user_label), "UID %u", (unsigned)users[selected].uid);
+        }
+        draw_text(fb, field_x + 22, y + 46, user_label, COLOR_INK, 1);
+    } else {
+        draw_text(fb, field_x + 22, y + 46, "NO USERS", COLOR_WARN, 1);
+    }
+
+    draw_text(fb, x + 16, y + 72, "PASS", COLOR_MUTED, 1);
+    fill_rect(fb, field_x, y + 65, field_w, 18, COLOR_ICON_WELL);
+    stroke_rect(fb, field_x, y + 65, field_w, 18, pass_border);
+    draw_password_dots(fb, field_x + 10, y + 69, strlen(password));
+    if (mode != UI_AUTHENTICATING && mode != UI_STARTING_SESSION) {
+        int cursor_x = field_x + 10 + (int)(strlen(password) > 12 ? 12 : strlen(password)) * 7;
+        fill_rect(fb, cursor_x + 1, y + 69, 2, 10, COLOR_ACCENT);
+    }
+
+    draw_text(fb, x + 16, y + 86, status_message(mode, message, error),
+              error ? COLOR_WARN : COLOR_MUTED, 1);
+}
+
+static void draw_user_menu(struct framebuffer *fb,
+                           const struct user_entry *users,
+                           int user_count,
+                           int menu_selected)
+{
+    const int x = 88;
+    const int y = 63;
+    const int w = 146;
+    const int visible = user_count < 3 ? user_count : 3;
+    const int rows = visible > 0 ? visible : 1;
+    const int h = 17 + rows * 18 + 2;
+    int start = menu_selected - 1;
+
+    if (start < 0) {
+        start = 0;
+    }
+    if (start + visible > user_count) {
+        start = user_count - visible;
+    }
+    if (start < 0) {
+        start = 0;
+    }
+
+    fill_rect(fb, x + 3, y + 3, w, h, COLOR_SHADOW);
+    fill_rect(fb, x, y, w, h, COLOR_PANEL);
+    stroke_rect(fb, x, y, w, h, COLOR_LINE);
+    fill_rect(fb, x, y, w, 17, COLOR_INK);
+    draw_text(fb, x + 7, y + 5, "SYSTEM USERS", COLOR_PANEL, 1);
+
+    if (user_count <= 0) {
+        draw_text(fb, x + 8, y + 25, "NO USERS", COLOR_MUTED, 1);
+        return;
+    }
+
+    for (int row = 0; row < visible; row++) {
+        int user_index = start + row;
+        int row_y = y + 18 + row * 18;
+        char name[48];
+        char uid_text[16];
+        int selected = user_index == menu_selected;
+
+        fill_rect(fb, x + 4, row_y, w - 8, 16, selected ? COLOR_ACCENT : COLOR_PANEL);
+        sanitize_ascii_label(users[user_index].name, name, sizeof(name));
+        if (name[0] == '\0') {
+            snprintf(name, sizeof(name), "USER");
+        }
+        snprintf(uid_text, sizeof(uid_text), "%u", (unsigned)users[user_index].uid);
+        draw_text(fb, x + 10, row_y + 4, name, selected ? COLOR_INK : COLOR_INK, 1);
+        draw_text_right(fb, x + w - 12, row_y + 4, uid_text, selected ? COLOR_INK : COLOR_MUTED, 1);
+    }
+}
+
+static void draw_power_menu(struct framebuffer *fb, int power_selection)
+{
+    const int x = 92;
+    const int y = 52;
+    const int w = 136;
+    const int h = 75;
+    const char *items[] = {"SHUTDOWN", "REBOOT", "CANCEL"};
+
+    fill_rect(fb, x + 3, y + 3, w, h, COLOR_SHADOW);
+    fill_rect(fb, x, y, w, h, COLOR_PANEL);
+    stroke_rect(fb, x, y, w, h, COLOR_LINE);
+    fill_rect(fb, x, y, w, 17, COLOR_INK);
+    draw_text_centered(fb, x + w / 2, y + 5, "POWER", COLOR_PANEL, 1);
+
+    for (int i = 0; i < 3; i++) {
+        int row_y = y + 24 + i * 18;
+        int selected = i == power_selection;
+        uint16_t fill = selected ? (i == 0 ? COLOR_WARN : COLOR_ACCENT) : COLOR_PANEL;
+        fill_rect(fb, x + 10, row_y, w - 20, 15, fill);
+        stroke_rect(fb, x + 10, row_y, w - 20, 15, selected ? COLOR_LINE : COLOR_SOFT_LINE);
+        draw_text_centered(fb, x + w / 2, row_y + 4, items[i], selected ? COLOR_INK : COLOR_MUTED, 1);
+    }
 }
 
 static void draw_frame(struct framebuffer *fb,
                        const struct user_entry *users,
                        int user_count,
                        int selected,
+                       int menu_selected,
+                       int power_selection,
                        const char *password,
                        const char *message,
-                       int error)
+                       int error,
+                       enum ui_mode mode)
 {
-    char line[128];
-
     draw_background(fb);
-    fill_rect(fb, 12, 12, 296, 146, COLOR_PANEL);
-    stroke_rect(fb, 12, 12, 296, 146, COLOR_ACCENT);
-    fill_rect(fb, 14, 14, 292, 20, COLOR_PANEL_2);
+    draw_topbar(fb);
+    draw_login_panel(fb, users, user_count, selected, password, message, error, mode);
+    draw_bottombar(fb);
 
-    draw_text(fb, 80, 20, "Cardputer Zero", COLOR_TEXT, 2);
-
-    draw_text(fb, 28, 48, "USER", COLOR_MUTED, 1);
-    fill_rect(fb, 80, 42, 208, 22, COLOR_FIELD);
-    stroke_rect(fb, 80, 42, 208, 22, COLOR_MUTED);
-    if (user_count > 0) {
-        snprintf(line, sizeof(line), "%.24s", users[selected].name);
-        draw_text(fb, 90, 50, line, COLOR_TEXT, 1);
-    } else {
-        draw_text(fb, 90, 50, "no normal users", COLOR_ERROR, 1);
-    }
-
-    draw_text(fb, 28, 80, "PASS", COLOR_MUTED, 1);
-    fill_rect(fb, 80, 74, 208, 22, COLOR_FIELD);
-    stroke_rect(fb, 80, 74, 208, 22, COLOR_ACCENT);
-    draw_password_dots(fb, 90, 79, strlen(password));
-
-    fill_rect(fb, 104, 108, 112, 22, COLOR_BUTTON);
-    stroke_rect(fb, 104, 108, 112, 22, COLOR_ACCENT);
-    draw_text(fb, 136, 116, "LOGIN", COLOR_TEXT, 1);
-
-    if (message != NULL && message[0] != '\0') {
-        draw_text(fb, 24, 144, message, error ? COLOR_ERROR : COLOR_MUTED, 1);
-    } else {
-        draw_text(fb, 24, 144, "TAB user  ENTER login  ESC power", COLOR_MUTED, 1);
+    if (mode == UI_USER_MENU) {
+        draw_user_menu(fb, users, user_count, menu_selected);
+    } else if (mode == UI_POWER_MENU) {
+        draw_power_menu(fb, power_selection);
     }
 }
 
@@ -478,15 +793,28 @@ static int handle_login(struct user_entry *user, const char *password, char *mes
     int pam_status = zero_pam_start_session(user->name, password, &session);
 
     if (pam_status != PAM_SUCCESS) {
-        snprintf(message, message_size, "Login failed");
+        snprintf(message, message_size, "AUTH FAILED");
         return 1;
     }
 
-    snprintf(message, message_size, "Session starting");
+    snprintf(message, message_size, "SESSION STARTING");
     launch_session(&session);
     zero_pam_end_session(&session, PAM_SUCCESS);
-    snprintf(message, message_size, "Session ended");
+    snprintf(message, message_size, "SESSION ENDED");
     return 0;
+}
+
+static void clamp_selection(int *value, int count)
+{
+    if (count <= 0) {
+        *value = 0;
+        return;
+    }
+    if (*value < 0) {
+        *value = count - 1;
+    } else if (*value >= count) {
+        *value = 0;
+    }
 }
 
 int main(void)
@@ -495,9 +823,12 @@ int main(void)
     struct input_set inputs;
     struct user_entry users[MAX_USERS];
     int selected = 0;
+    int menu_selected = 0;
+    int power_selection = 2;
     char password[MAX_PASSWORD] = "";
     char message[128] = "";
     int error = 0;
+    enum ui_mode mode = UI_LOGIN;
 
     if (fb_open(&fb) != 0) {
         fprintf(stderr, "zero-greeter: failed to open %s: %s\n", FB_DEVICE, strerror(errno));
@@ -512,11 +843,11 @@ int main(void)
 
     for (;;) {
         int user_count = load_users(users);
-        if (selected >= user_count) {
-            selected = 0;
-        }
+        clamp_selection(&selected, user_count);
+        clamp_selection(&menu_selected, user_count);
 
-        draw_frame(&fb, users, user_count, selected, password, message, error);
+        draw_frame(&fb, users, user_count, selected, menu_selected, power_selection,
+                   password, message, error, mode);
 
         unsigned short code;
         int pressed;
@@ -528,53 +859,92 @@ int main(void)
             continue;
         }
 
+        if (mode == UI_USER_MENU) {
+            if (code == KEY_ESC) {
+                mode = UI_LOGIN;
+                continue;
+            }
+            if (code == KEY_TAB || code == KEY_DOWN || code == KEY_RIGHT) {
+                menu_selected++;
+                clamp_selection(&menu_selected, user_count);
+                continue;
+            }
+            if (code == KEY_UP || code == KEY_LEFT) {
+                menu_selected--;
+                clamp_selection(&menu_selected, user_count);
+                continue;
+            }
+            if ((code == KEY_ENTER || code == KEY_KPENTER) && user_count > 0) {
+                selected = menu_selected;
+                password[0] = '\0';
+                message[0] = '\0';
+                error = 0;
+                mode = UI_LOGIN;
+                continue;
+            }
+            continue;
+        }
+
+        if (mode == UI_POWER_MENU) {
+            if (code == KEY_ESC) {
+                mode = UI_LOGIN;
+                continue;
+            }
+            if (code == KEY_DOWN || code == KEY_RIGHT || code == KEY_TAB) {
+                power_selection = (power_selection + 1) % 3;
+                continue;
+            }
+            if (code == KEY_UP || code == KEY_LEFT) {
+                power_selection = (power_selection + 2) % 3;
+                continue;
+            }
+            if (code == KEY_ENTER || code == KEY_KPENTER) {
+                if (power_selection == 0) {
+                    run_helper("shutdown");
+                } else if (power_selection == 1) {
+                    run_helper("reboot");
+                } else {
+                    mode = UI_LOGIN;
+                }
+                continue;
+            }
+            continue;
+        }
+
         if (code == KEY_TAB) {
             if (user_count > 0) {
-                selected = (selected + 1) % user_count;
+                menu_selected = selected;
             }
-            password[0] = '\0';
+            mode = UI_USER_MENU;
             message[0] = '\0';
             error = 0;
             continue;
         }
 
-        if (code == KEY_ESC) {
-            snprintf(message, sizeof(message), "R reboot  P poweroff");
-            error = 0;
-            draw_frame(&fb, users, user_count, selected, password, message, error);
-            for (;;) {
-                int power_key_status = read_key(&inputs, &code, &pressed, 1000);
-                if (power_key_status == 1) {
-                    draw_frame(&fb, users, user_count, selected, password, message, error);
-                    continue;
-                }
-                if (power_key_status != 0 || !pressed) {
-                    continue;
-                }
-                if (code == KEY_R) {
-                    run_helper("reboot");
-                    break;
-                }
-                if (code == KEY_P) {
-                    run_helper("poweroff");
-                    break;
-                }
-                if (code == KEY_ESC || code == KEY_C) {
-                    break;
-                }
-            }
+        if (code == KEY_ESC || code == KEY_POWER) {
+            power_selection = 2;
+            mode = UI_POWER_MENU;
             message[0] = '\0';
+            error = 0;
             continue;
         }
 
         if (code == KEY_ENTER || code == KEY_KPENTER) {
             if (user_count == 0) {
-                snprintf(message, sizeof(message), "Create a user first");
+                snprintf(message, sizeof(message), "CREATE A USER FIRST");
                 error = 1;
                 continue;
             }
+
+            mode = UI_AUTHENTICATING;
+            snprintf(message, sizeof(message), "AUTHENTICATING");
+            draw_frame(&fb, users, user_count, selected, menu_selected, power_selection,
+                       password, message, error, mode);
+
+            mode = UI_STARTING_SESSION;
             error = handle_login(&users[selected], password, message, sizeof(message));
             memset(password, 0, sizeof(password));
+            mode = UI_LOGIN;
             continue;
         }
 
@@ -584,6 +954,7 @@ int main(void)
                 password[len - 1] = '\0';
             }
             message[0] = '\0';
+            error = 0;
             continue;
         }
 

@@ -63,7 +63,7 @@ Path:
 Role:
 
 - discover existing normal users,
-- render internal-screen GUI login,
+- render an internal-screen Zero-style GUI login,
 - accept password input,
 - authenticate through PAM,
 - open PAM session,
@@ -198,3 +198,11 @@ Recovery paths:
 - session fallback to login shell when shell is missing,
 - restoring `cmdline.txt.cardputer-zero.bak`.
 
+## Visual Specification
+
+The greeter and shell share the visual system in
+[`zero-visual-system.md`](zero-visual-system.md), but keep separate semantics:
+
+- `cardputer-zero-os` renders login, user selection, PAM status, and power.
+- `cardputer-zero-shell` renders the post-login desktop, task UI, app cards,
+  and application launch flow.
