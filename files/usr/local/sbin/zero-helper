@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -10,13 +13,24 @@ Usage:
   zero-helper restart-greeter
   zero-helper network-restart
   zero-helper display internal|mirror|extended
+  zero-helper appstore install-deb DEB_PATH PACKAGE
+  zero-helper appstore remove PACKAGE
+  zero-helper appstore repair-dpkg
 EOF
 }
 
 need_root() {
+  if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+    echo "Do not run zero-helper through sudo; call it directly so polkit can authorize it." >&2
+    exit 126
+  fi
+
   if [ "$(id -u)" -ne 0 ]; then
-    echo "zero-helper must run as root, usually through sudo." >&2
-    exit 1
+    if command -v pkexec >/dev/null 2>&1; then
+      exec pkexec /usr/local/sbin/zero-helper "$@"
+    fi
+    echo "zero-helper must run as root, usually through polkit/pkexec." >&2
+    exit 126
   fi
 }
 
@@ -55,9 +69,141 @@ set_display_mode() {
   esac
 }
 
-need_root
+fail_usage() {
+  usage >&2
+  exit 2
+}
+
+validate_package_name() {
+  package=$1
+  if ! printf '%s' "$package" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9+.-]*$'; then
+    echo "Invalid package name: $package" >&2
+    exit 2
+  fi
+}
+
+canonical_file() {
+  path=$1
+  if [ ! -f "$path" ]; then
+    echo "File does not exist: $path" >&2
+    exit 2
+  fi
+  readlink -f -- "$path"
+}
+
+validate_appstore_deb_path() {
+  deb_path=$1
+  case "$deb_path" in
+    /home/*/.local/share/cardputerzero-appstore/cache/downloads/*.deb|/var/cache/cardputerzero-appstore/downloads/*.deb)
+      ;;
+    *)
+      echo "Refusing deb outside AppStore cache: $deb_path" >&2
+      exit 2
+      ;;
+  esac
+}
+
+repair_dpkg_if_needed() {
+  if ! command -v dpkg >/dev/null 2>&1; then
+    return
+  fi
+
+  if dpkg --audit | grep -q .; then
+    dpkg --configure -a
+  fi
+}
+
+appstore_install_deb() {
+  deb_path=${1:-}
+  package=${2:-}
+  if [ -z "$deb_path" ] || [ -z "$package" ]; then
+    fail_usage
+  fi
+
+  validate_package_name "$package"
+  deb_path=$(canonical_file "$deb_path")
+  validate_appstore_deb_path "$deb_path"
+
+  if ! command -v dpkg-deb >/dev/null 2>&1; then
+    echo "dpkg-deb is required to inspect deb packages." >&2
+    exit 2
+  fi
+
+  actual_package=$(dpkg-deb -f "$deb_path" Package)
+  if [ "$actual_package" != "$package" ]; then
+    echo "Deb package mismatch: expected $package, got $actual_package" >&2
+    exit 2
+  fi
+
+  export DEBIAN_FRONTEND=noninteractive
+  repair_dpkg_if_needed
+
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get -y install "$deb_path"
+    return
+  fi
+
+  if command -v dpkg >/dev/null 2>&1; then
+    dpkg -i "$deb_path"
+    return
+  fi
+
+  echo "apt-get or dpkg is required to install deb packages." >&2
+  exit 2
+}
+
+appstore_remove() {
+  package=${1:-}
+  if [ -z "$package" ]; then
+    fail_usage
+  fi
+
+  validate_package_name "$package"
+  export DEBIAN_FRONTEND=noninteractive
+  repair_dpkg_if_needed
+
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get -y remove "$package"
+    return
+  fi
+
+  if command -v dpkg >/dev/null 2>&1; then
+    dpkg -r "$package"
+    return
+  fi
+
+  echo "apt-get or dpkg is required to remove deb packages." >&2
+  exit 2
+}
+
+run_appstore_action() {
+  action=${1:-}
+  case "$action" in
+    install-deb)
+      appstore_install_deb "${2:-}" "${3:-}"
+      ;;
+    remove)
+      appstore_remove "${2:-}"
+      ;;
+    repair-dpkg)
+      repair_dpkg_if_needed
+      ;;
+    *)
+      fail_usage
+      ;;
+  esac
+}
 
 cmd=${1:-}
+case "$cmd" in
+  ""|-h|--help)
+    usage
+    exit 0
+    ;;
+esac
+
+need_root "$@"
+
 case "$cmd" in
   reboot)
     systemctl reboot
@@ -73,6 +219,9 @@ case "$cmd" in
     ;;
   display)
     set_display_mode "${2:-}"
+    ;;
+  appstore)
+    run_appstore_action "${2:-}" "${3:-}" "${4:-}"
     ;;
   *)
     usage >&2

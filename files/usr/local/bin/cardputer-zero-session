@@ -14,6 +14,32 @@ if [ -r "$CONFIG" ]; then
 fi
 
 SHELL_BIN=${CARDPUTER_ZERO_SHELL:-/opt/cardputer-zero-shell/bin/zero-shell}
+POLKIT_AGENT=${CARDPUTER_ZERO_POLKIT_AGENT:-1}
+
+start_zero_polkit_agent() {
+  runtime_dir=${XDG_RUNTIME_DIR:-/tmp}
+  session_id=${XDG_SESSION_ID:-session}
+  pidfile="$runtime_dir/zero-polkit-agent.$session_id.pid"
+  logfile="$runtime_dir/zero-polkit-agent.$session_id.log"
+
+  if [ "$POLKIT_AGENT" != "1" ]; then
+    return
+  fi
+
+  if [ ! -x /usr/local/bin/zero-polkit-agent ]; then
+    return
+  fi
+
+  if [ -r "$pidfile" ]; then
+    old_pid=$(cat "$pidfile" 2>/dev/null || true)
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+      return
+    fi
+  fi
+
+  /usr/local/bin/zero-polkit-agent >>"$logfile" 2>&1 &
+  echo "$!" >"$pidfile"
+}
 
 if [ ! -x "$SHELL_BIN" ]; then
   printf '\nCardputer Zero shell was not found:\n  %s\n\n' "$SHELL_BIN" >&2
@@ -21,4 +47,5 @@ if [ ! -x "$SHELL_BIN" ]; then
   exec "${SHELL:-/bin/sh}" -l
 fi
 
+start_zero_polkit_agent
 exec "$SHELL_BIN"

@@ -16,7 +16,7 @@ sudo systemctl disable --now zero-greeter.service
 ## Restart the Greeter
 
 ```sh
-sudo /usr/local/sbin/zero-helper restart-greeter
+/usr/local/sbin/zero-helper restart-greeter
 ```
 
 or:

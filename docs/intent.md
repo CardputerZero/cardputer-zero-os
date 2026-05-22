@@ -23,6 +23,7 @@
 - a user session launcher,
 - a device permission profile,
 - a restricted root helper provider,
+- a polkit authorization boundary provider,
 - a recovery profile.
 
 中文：
@@ -125,6 +126,10 @@ Privileged operations are routed through:
 /usr/local/sbin/zero-helper
 ```
 
+When root authorization is required, `zero-helper` enters polkit through
+`pkexec`. `cardputer-zero-os` owns the policy file and the internal-screen
+`zero-polkit-agent`.
+
 The helper is intentionally narrow. It must not become:
 
 - arbitrary shell execution,
@@ -141,7 +146,8 @@ Because `cardputer-zero-os` is an OS profile:
 - it may install PAM config,
 - it may install systemd units,
 - it may install udev rules,
-- it may install sudoers policy for `zero-helper`,
+- it may install polkit policy for `zero-helper`,
+- it may install the `zero-polkit-agent`,
 - it may build and install `zero-greeter`.
 
 Because it is not the shell:
@@ -150,4 +156,3 @@ Because it is not the shell:
 - it must not scan APPLaunch applications,
 - it must not implement desktop pages,
 - it must not run the user desktop as root.
-

@@ -31,7 +31,8 @@ It provides:
 - PAM-based login for existing system users,
 - a Cardputer Zero session launcher,
 - device permission setup,
-- and a restricted privileged helper.
+- a restricted privileged helper,
+- and a Cardputer Zero polkit authentication agent.
 
 ## Current UI
 
@@ -63,6 +64,7 @@ Those belong to `cardputer-zero-shell` or separate user applications.
 - launching `cardputer-zero-session`,
 - device permission rules,
 - `zero-helper`,
+- polkit policy and `zero-polkit-agent`,
 - recovery fallback.
 
 `cardputer-zero-os` does not own:
@@ -119,11 +121,13 @@ This installs:
 - `/usr/local/bin/zero-splash`
 - `/usr/local/bin/zero-greeter`
 - `/usr/local/bin/cardputer-zero-session`
+- `/usr/local/bin/zero-polkit-agent`
 - `/usr/local/sbin/zero-helper`
 - `/etc/pam.d/zero-greeter`
 - `/etc/systemd/system/zero-splash.service`
 - `/etc/systemd/system/zero-greeter.service`
-- `/etc/sudoers.d/cardputer-zero`
+- `/etc/systemd/user/zero-polkit-agent.service`
+- `/usr/share/polkit-1/actions/org.cardputerzero.zero-helper.policy`
 - `/etc/udev/rules.d/99-cardputer-zero.rules`
 - `/etc/cardputer-zero/*.conf`
 
@@ -175,6 +179,7 @@ More detail: [docs/zero-shell-interface.md](docs/zero-shell-interface.md)
 - [docs/session.md](docs/session.md)
 - [docs/permissions.md](docs/permissions.md)
 - [docs/zero-helper.md](docs/zero-helper.md)
+- [docs/polkit.md](docs/polkit.md)
 - [docs/recovery.md](docs/recovery.md)
 - [docs/install.md](docs/install.md)
 - [docs/zero-shell-interface.md](docs/zero-shell-interface.md)

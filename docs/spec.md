@@ -116,6 +116,27 @@ Role:
 
 - provide narrow root operations for logged-in session UI.
 
+### zero-polkit-agent
+
+Path:
+
+```text
+/usr/local/bin/zero-polkit-agent
+```
+
+Role:
+
+- register as a polkit authentication agent for the logged-in user session,
+- render a small internal-screen authorization prompt,
+- pass user-entered credentials to `PolkitAgentSession`.
+
+Non-role:
+
+- sudo wrapper,
+- app launcher,
+- password database,
+- package manager UI.
+
 ### udev Rules
 
 Path:
@@ -165,7 +186,8 @@ The profile must:
 - initialize supplementary groups,
 - drop privileges before launching user session,
 - keep the user desktop out of root,
-- restrict helper sudoers to explicit commands.
+- route helper privilege through polkit/pkexec,
+- restrict helper actions to explicit subcommands.
 
 The profile must not:
 
@@ -173,6 +195,7 @@ The profile must not:
 - implement custom password auth,
 - run ZeroShell as root,
 - grant arbitrary sudo,
+- install NOPASSWD helper sudoers entries,
 - launch arbitrary root commands from UI.
 
 ## HDMI Specification

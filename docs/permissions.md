@@ -33,9 +33,29 @@ tags where logind can use them:
 /usr/local/sbin/zero-helper
 ```
 
-The sudoers file allows members of `cardputer-zero` to run only the whitelisted
-helper commands. The helper does not accept arbitrary commands or arbitrary
-systemd service names.
+`zero-helper` is polkit-backed. Normal user processes call it directly; when
+root is required it re-execs through `pkexec`, and polkit asks the active user
+session to authorize the request.
+
+Policy file:
+
+```text
+/usr/share/polkit-1/actions/org.cardputerzero.zero-helper.policy
+```
+
+Authentication agent:
+
+```text
+/usr/local/bin/zero-polkit-agent
+/etc/systemd/user/zero-polkit-agent.service
+```
+
+In the normal Zero path, `cardputer-zero-session` starts the agent directly so
+it registers against the same login session as ZeroShell.
+
+The helper does not accept arbitrary commands, arbitrary systemd service names,
+or arbitrary package-manager arguments. The old `NOPASSWD` sudoers path is not
+part of the current permission model.
 
 Allowed actions:
 
@@ -47,3 +67,6 @@ Allowed actions:
 - `display internal`
 - `display mirror`
 - `display extended`
+- `appstore install-deb DEB_PATH PACKAGE`
+- `appstore remove PACKAGE`
+- `appstore repair-dpkg`

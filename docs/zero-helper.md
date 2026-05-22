@@ -4,35 +4,55 @@
 
 It exists so login-session UI can request a small set of root operations without becoming root and without gaining arbitrary sudo.
 
+Shells and apps should call `zero-helper` directly. They should not prefix it
+with `sudo`; `zero-helper` owns the `pkexec`/polkit transition.
+
+For that reason, `zero-helper` rejects direct `sudo zero-helper ...` execution
+when it detects a `SUDO_USER` environment.
+
 ## Path
 
 ```text
 /usr/local/sbin/zero-helper
 ```
 
-## Sudoers Policy
+## Polkit Policy
 
-Installed sudoers file:
+Installed policy file:
 
 ```text
-/etc/sudoers.d/cardputer-zero
+/usr/share/polkit-1/actions/org.cardputerzero.zero-helper.policy
 ```
 
-Members of group `cardputer-zero` may run only explicitly whitelisted helper invocations.
+Normal user processes call `zero-helper` directly. If it is not already running
+as root, it re-execs itself through:
+
+```text
+pkexec /usr/local/sbin/zero-helper ...
+```
+
+Polkit then authorizes the request through the current user session's
+authentication agent. `cardputer-zero-os` installs `zero-polkit-agent` for the
+internal Zero screen.
+
+Older `NOPASSWD` sudoers entries are intentionally removed during install.
 
 ## Allowed Actions
 
 Current allowed actions:
 
 ```sh
-sudo /usr/local/sbin/zero-helper reboot
-sudo /usr/local/sbin/zero-helper shutdown
-sudo /usr/local/sbin/zero-helper poweroff
-sudo /usr/local/sbin/zero-helper restart-greeter
-sudo /usr/local/sbin/zero-helper network-restart
-sudo /usr/local/sbin/zero-helper display internal
-sudo /usr/local/sbin/zero-helper display mirror
-sudo /usr/local/sbin/zero-helper display extended
+/usr/local/sbin/zero-helper reboot
+/usr/local/sbin/zero-helper shutdown
+/usr/local/sbin/zero-helper poweroff
+/usr/local/sbin/zero-helper restart-greeter
+/usr/local/sbin/zero-helper network-restart
+/usr/local/sbin/zero-helper display internal
+/usr/local/sbin/zero-helper display mirror
+/usr/local/sbin/zero-helper display extended
+/usr/local/sbin/zero-helper appstore install-deb DEB_PATH PACKAGE
+/usr/local/sbin/zero-helper appstore remove PACKAGE
+/usr/local/sbin/zero-helper appstore repair-dpkg
 ```
 
 ## Forbidden Shape
@@ -69,6 +89,26 @@ This is intentional: the helper exposes a stable controlled action before the ha
 
 If none exists, it exits with an error.
 
+## AppStore Actions
+
+AppStore package operations are deliberately narrow:
+
+- `appstore install-deb DEB_PATH PACKAGE`
+- `appstore remove PACKAGE`
+- `appstore repair-dpkg`
+
+`install-deb` only accepts `.deb` files from the AppStore cache:
+
+```text
+/home/*/.local/share/cardputerzero-appstore/cache/downloads/*.deb
+/var/cache/cardputerzero-appstore/downloads/*.deb
+```
+
+It validates that the `.deb` package name matches the requested package before
+calling the base OS package tools.
+
+This is not a general apt or dpkg wrapper.
+
 ## Relationship To ZeroShell
 
 `cardputer-zero-shell` may call `zero-helper` for power or display actions.
@@ -84,4 +124,3 @@ sudo shutdown
 ```
 
 The helper is the privilege boundary.
-

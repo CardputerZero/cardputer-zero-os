@@ -14,12 +14,13 @@ The installer requires:
 
 - a C compiler,
 - PAM development headers for building `zero-greeter`,
+- polkit development headers for building `zero-polkit-agent`,
 - systemd for service enablement on live installs.
 
 On Raspberry Pi OS / Debian:
 
 ```sh
-sudo apt-get install build-essential libpam0g-dev
+sudo apt-get install build-essential pkg-config libpam0g-dev libglib2.0-dev libpolkit-agent-1-dev libpolkit-gobject-1-dev
 ```
 
 The installer does not install packages by itself.
@@ -32,11 +33,13 @@ The install script installs:
 /usr/local/bin/zero-splash
 /usr/local/bin/zero-greeter
 /usr/local/bin/cardputer-zero-session
+/usr/local/bin/zero-polkit-agent
 /usr/local/sbin/zero-helper
 /etc/pam.d/zero-greeter
 /etc/systemd/system/zero-splash.service
 /etc/systemd/system/zero-greeter.service
-/etc/sudoers.d/cardputer-zero
+/etc/systemd/user/zero-polkit-agent.service
+/usr/share/polkit-1/actions/org.cardputerzero.zero-helper.policy
 /etc/udev/rules.d/99-cardputer-zero.rules
 /etc/cardputer-zero/os.conf
 /etc/cardputer-zero/session.conf
@@ -51,6 +54,10 @@ zero-splash.service
 zero-greeter.service
 ```
 
+`zero-polkit-agent` is installed as a user service file for inspection/manual
+use, but the normal Zero path starts it directly from
+`cardputer-zero-session` so it registers against the actual Zero login session.
+
 ## What Install Does Not Do
 
 The install script does not:
@@ -64,6 +71,9 @@ The install script does not:
 - install app launcher pages,
 - install app store UI,
 - install packages through apt.
+
+It also removes the legacy `/etc/sudoers.d/cardputer-zero` file when present,
+because helper authorization now belongs to polkit.
 
 ## DESTDIR / Image Root
 
@@ -156,7 +166,8 @@ sed -n '1,120p' /usr/local/bin/cardputer-zero-session
 Check helper policy:
 
 ```sh
-sudo -l | grep zero-helper || true
+pkaction --verbose --action-id org.cardputerzero.zero-helper
+test ! -e /etc/sudoers.d/cardputer-zero
 ```
 
 Check shell handoff:
@@ -166,4 +177,3 @@ ls -l /opt/cardputer-zero-shell/bin/zero-shell
 ```
 
 If shell is missing, the session fallback should start a login shell after successful authentication.
-
