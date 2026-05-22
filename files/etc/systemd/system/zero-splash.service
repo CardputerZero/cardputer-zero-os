@@ -1,0 +1,13 @@
+[Unit]
+Description=Cardputer Zero Splash
+DefaultDependencies=no
+After=local-fs.target
+Before=zero-greeter.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/zero-splash
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

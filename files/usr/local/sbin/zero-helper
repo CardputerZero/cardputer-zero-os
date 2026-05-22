@@ -1,0 +1,81 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  cat <<'EOF'
+Usage:
+  zero-helper reboot
+  zero-helper shutdown
+  zero-helper poweroff
+  zero-helper restart-greeter
+  zero-helper network-restart
+  zero-helper display internal|mirror|extended
+EOF
+}
+
+need_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "zero-helper must run as root, usually through sudo." >&2
+    exit 1
+  fi
+}
+
+restart_network() {
+  if systemctl list-unit-files NetworkManager.service >/dev/null 2>&1; then
+    systemctl restart NetworkManager.service
+    return
+  fi
+
+  if systemctl list-unit-files networking.service >/dev/null 2>&1; then
+    systemctl restart networking.service
+    return
+  fi
+
+  if systemctl list-unit-files dhcpcd.service >/dev/null 2>&1; then
+    systemctl restart dhcpcd.service
+    return
+  fi
+
+  echo "No supported network service was found." >&2
+  exit 2
+}
+
+set_display_mode() {
+  mode=$1
+  case "$mode" in
+    internal|mirror|extended)
+      mkdir -p /run/cardputer-zero
+      printf '%s\n' "$mode" >/run/cardputer-zero/display-mode
+      echo "Display mode '$mode' recorded. Device-specific switching is not implemented yet." >&2
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+need_root
+
+cmd=${1:-}
+case "$cmd" in
+  reboot)
+    systemctl reboot
+    ;;
+  shutdown|poweroff)
+    systemctl poweroff
+    ;;
+  restart-greeter)
+    systemctl restart zero-greeter.service
+    ;;
+  network-restart)
+    restart_network
+    ;;
+  display)
+    set_display_mode "${2:-}"
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

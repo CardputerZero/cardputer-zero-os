@@ -1,0 +1,56 @@
+# Build outputs
+build/
+build-*/
+out/
+dist/
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.elf
+*.map
+*.bin
+
+# Generated local binaries
+greeter/zero-greeter
+
+# CMake and compile databases
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Packages and archives
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.deb
+*.rpm
+
+# Logs and runtime scratch
+*.log
+*.pid
+*.tmp
+tmp/
+.tmp/
+.cache/
+.codex_tmp/
+
+# Python/tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+

@@ -1,0 +1,200 @@
+# cardputer-zero-os Specification
+
+本文档定义当前 `cardputer-zero-os` profile 的规格。
+
+## Scope
+
+In scope:
+
+- userspace splash,
+- internal-screen GUI greeter,
+- PAM authentication for existing users,
+- real user session launch,
+- Cardputer Zero session script,
+- device permission setup,
+- restricted privileged helper,
+- recovery fallback,
+- quiet boot tuning where practical.
+
+Out of scope:
+
+- creating users,
+- autologin,
+- replacing Pi firmware output,
+- replacing all kernel output,
+- replacing HDMI LightDM login,
+- post-login GUI launcher,
+- app scanner,
+- app store,
+- file manager,
+- terminal UI,
+- settings UI,
+- system monitor UI.
+
+## Components
+
+### zero-splash
+
+Path:
+
+```text
+/usr/local/bin/zero-splash
+```
+
+Role:
+
+- draw a lightweight userspace startup visual on internal framebuffer,
+- hold visual continuity before greeter starts.
+
+Non-role:
+
+- firmware splash,
+- total kernel-output suppression,
+- HDMI display manager.
+
+### zero-greeter
+
+Path:
+
+```text
+/usr/local/bin/zero-greeter
+```
+
+Role:
+
+- discover existing normal users,
+- render internal-screen GUI login,
+- accept password input,
+- authenticate through PAM,
+- open PAM session,
+- drop to authenticated UID/GID,
+- exec `cardputer-zero-session`.
+
+Non-role:
+
+- launcher,
+- shell,
+- password database,
+- user manager,
+- HDMI LightDM replacement.
+
+### PAM Service
+
+Path:
+
+```text
+/etc/pam.d/zero-greeter
+```
+
+Role:
+
+- delegate authentication/account/session policy to base OS PAM stack.
+
+### cardputer-zero-session
+
+Path:
+
+```text
+/usr/local/bin/cardputer-zero-session
+```
+
+Role:
+
+- define post-login Cardputer Zero session environment,
+- exec configured shell,
+- fallback to login shell when ZeroShell is missing.
+
+### zero-helper
+
+Path:
+
+```text
+/usr/local/sbin/zero-helper
+```
+
+Role:
+
+- provide narrow root operations for logged-in session UI.
+
+### udev Rules
+
+Path:
+
+```text
+/etc/udev/rules.d/99-cardputer-zero.rules
+```
+
+Role:
+
+- assign relevant device groups,
+- add `uaccess` tags where useful.
+
+## systemd Specification
+
+`zero-splash.service`:
+
+- `DefaultDependencies=no`
+- `After=local-fs.target`
+- `Before=zero-greeter.service`
+- `WantedBy=multi-user.target`
+
+`zero-greeter.service`:
+
+- `After=systemd-user-sessions.service zero-splash.service`
+- `Restart=always`
+- logs to journal,
+- does not conflict with `lightdm` or `getty@tty1`.
+
+## User Specification
+
+The greeter shows normal interactive users:
+
+- UID >= 1000,
+- UID < 60000,
+- home under `/home`,
+- shell not matching `nologin` or `false`.
+
+It does not create users.
+
+## Security Specification
+
+The profile must:
+
+- authenticate via PAM,
+- open a PAM session,
+- initialize supplementary groups,
+- drop privileges before launching user session,
+- keep the user desktop out of root,
+- restrict helper sudoers to explicit commands.
+
+The profile must not:
+
+- store passwords,
+- implement custom password auth,
+- run ZeroShell as root,
+- grant arbitrary sudo,
+- launch arbitrary root commands from UI.
+
+## HDMI Specification
+
+The Zero greeter is internal-screen only.
+
+The profile should not disable:
+
+- `lightdm`,
+- `display-manager`,
+- `getty@tty1`.
+
+HDMI login remains a base OS/recovery surface.
+
+## Recovery Specification
+
+Recovery paths:
+
+- SSH,
+- HDMI / base OS display manager,
+- `getty@tty1`,
+- disabling `zero-greeter.service`,
+- session fallback to login shell when shell is missing,
+- restoring `cmdline.txt.cardputer-zero.bak`.
+

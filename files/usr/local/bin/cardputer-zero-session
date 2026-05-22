@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+CONFIG=/etc/cardputer-zero/session.conf
+
+export XDG_SESSION_TYPE=tty
+export XDG_CURRENT_DESKTOP=CardputerZero
+export XDG_SESSION_DESKTOP=CardputerZero
+export CARDPUTER_ZERO_SESSION=1
+
+if [ -r "$CONFIG" ]; then
+  # shellcheck disable=SC1090
+  . "$CONFIG"
+fi
+
+SHELL_BIN=${CARDPUTER_ZERO_SHELL:-/opt/cardputer-zero-shell/bin/zero-shell}
+
+if [ ! -x "$SHELL_BIN" ]; then
+  printf '\nCardputer Zero shell was not found:\n  %s\n\n' "$SHELL_BIN" >&2
+  printf 'Starting a login shell for recovery.\n' >&2
+  exec "${SHELL:-/bin/sh}" -l
+fi
+
+exec "$SHELL_BIN"

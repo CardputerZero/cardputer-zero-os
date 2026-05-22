@@ -1,0 +1,14 @@
+# Cardputer Zero device permissions.
+# Users still need group membership or logind/uaccess support from the base OS.
+
+SUBSYSTEM=="input", GROUP="input", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="video4linux", GROUP="video", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="drm", KERNEL=="renderD*", GROUP="render", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="sound", GROUP="audio", MODE="0660", TAG+="uaccess"
+
+KERNEL=="gpiomem", GROUP="gpio", MODE="0660"
+SUBSYSTEM=="gpio", GROUP="gpio", MODE="0660"
+KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"
+
+KERNEL=="spidev*", GROUP="spi", MODE="0660"
+KERNEL=="i2c-*", GROUP="i2c", MODE="0660"
