@@ -39,6 +39,8 @@ The install script installs:
 /etc/systemd/system/zero-splash.service
 /etc/systemd/system/zero-greeter.service
 /etc/systemd/user/zero-polkit-agent.service
+/etc/lightdm/lightdm.conf.d/99-cardputer-zero-no-autologin.conf
+/etc/cardputer-zero/lightdm-labwc-environment
 /usr/share/polkit-1/actions/org.cardputerzero.zero-helper.policy
 /etc/udev/rules.d/99-cardputer-zero.rules
 /etc/cardputer-zero/os.conf
@@ -63,7 +65,6 @@ use, but the normal Zero path starts it directly from
 The install script does not:
 
 - create a fixed `zero` user,
-- configure autologin,
 - disable LightDM,
 - disable `display-manager`,
 - disable `getty@tty1`,
@@ -74,6 +75,58 @@ The install script does not:
 
 It also removes the legacy `/etc/sudoers.d/cardputer-zero` file when present,
 because helper authorization now belongs to polkit.
+
+## LightDM Policy
+
+`cardputer-zero-os` keeps LightDM available as an HDMI/recovery login surface,
+but it forbids autologin.
+
+The installer writes:
+
+```text
+/etc/lightdm/lightdm.conf.d/99-cardputer-zero-no-autologin.conf
+```
+
+and comments out existing `autologin-*` keys in:
+
+```text
+/etc/lightdm/lightdm.conf
+```
+
+This preserves Pi OS user creation and normal HDMI login while preventing the
+base desktop from booting straight into a user session and stealing the Zero
+internal display.
+
+For Raspberry Pi OS labwc greeter sessions, the installer switches LightDM to
+the `cardputer-zero-pi-greeter-labwc` greeter entry:
+
+```text
+/usr/share/xgreeters/cardputer-zero-pi-greeter-labwc.desktop
+/usr/local/bin/cardputer-zero-lightdm-labwc
+```
+
+The wrapper exports:
+
+```text
+WLR_DRM_DEVICES=/dev/dri/cardputer-zero-hdmi
+LABWC_FALLBACK_OUTPUT=NOOP-1
+```
+
+before starting `labwc`. This is intentional: `WLR_DRM_DEVICES` must be in the
+process environment before wlroots opens DRM devices, otherwise the Pi OS
+greeter may still claim the Zero internal `SPI-1` card. The stable
+`/dev/dri/cardputer-zero-hdmi` symlink is used instead of the Raspberry Pi
+`by-path` name because `WLR_DRM_DEVICES` uses `:` as its list separator.
+
+The installer also writes the same HDMI-only device hint into:
+
+```text
+/etc/xdg/labwc-greeter/environment
+/etc/xdg/labwc/environment
+```
+
+so Pi OS LightDM/labwc uses the HDMI/vc4 DRM card and does not claim the Zero
+internal `SPI-1` card.
 
 ## DESTDIR / Image Root
 

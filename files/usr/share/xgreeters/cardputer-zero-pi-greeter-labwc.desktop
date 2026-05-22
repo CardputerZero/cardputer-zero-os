@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Cardputer Zero HDMI Pi Greeter
+Comment=Pi OS LightDM greeter restricted to the HDMI/vc4 display path
+Exec=/usr/local/bin/cardputer-zero-lightdm-labwc
+Type=Application
+X-Ubuntu-Gettext-Domain=lightdm
+X-LightDM-Session-Type=wayland

@@ -1,3 +1,5 @@
+#include "../common/zero_framebuffer.h"
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -18,24 +20,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define FB_DEVICE "/dev/fb0"
-#define FB_WIDTH 320
-#define FB_HEIGHT 170
-#define FB_BYTES_PER_PIXEL 2
-#define FB_SIZE (FB_WIDTH * FB_HEIGHT * FB_BYTES_PER_PIXEL)
+#define FB_WIDTH ZERO_FB_LOGICAL_WIDTH
+#define FB_HEIGHT ZERO_FB_LOGICAL_HEIGHT
 #define MAX_INPUTS 32
 #define MAX_SECRET 256
 #define MAX_STOPPED_PROCS 64
 
 #define RGB565_CONST(r, g, b) \
     (uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xF8) << 3) | ((b) >> 3))
-
-struct framebuffer {
-    int fd;
-    uint16_t *pixels;
-    size_t size;
-    int ok;
-};
 
 struct input_set {
     int fds[MAX_INPUTS];
@@ -195,7 +187,7 @@ static int process_has_framebuffer_open(pid_t pid)
         }
         target[n] = '\0';
 
-        if (strcmp(target, FB_DEVICE) == 0) {
+        if (zero_fb_path_is_internal_device(target)) {
             closedir(fd_dir);
             return 1;
         }
@@ -261,46 +253,22 @@ static void screen_lease_release(struct screen_lease *lease)
     memset(lease, 0, sizeof(*lease));
 }
 
-static int fb_open(struct framebuffer *fb)
+static int fb_open(struct zero_framebuffer *fb)
 {
-    memset(fb, 0, sizeof(*fb));
-    fb->fd = open(FB_DEVICE, O_RDWR);
-    if (fb->fd < 0) {
-        return -1;
-    }
-
-    fb->size = FB_SIZE;
-    fb->pixels = mmap(NULL, fb->size, PROT_READ | PROT_WRITE, MAP_SHARED, fb->fd, 0);
-    if (fb->pixels == MAP_FAILED) {
-        close(fb->fd);
-        memset(fb, 0, sizeof(*fb));
-        return -1;
-    }
-
-    fb->ok = 1;
-    return 0;
+    return zero_fb_open(fb);
 }
 
-static void fb_close(struct framebuffer *fb)
+static void fb_close(struct zero_framebuffer *fb)
 {
-    if (fb->pixels != NULL) {
-        munmap(fb->pixels, fb->size);
-    }
-    if (fb->fd >= 0) {
-        close(fb->fd);
-    }
-    memset(fb, 0, sizeof(*fb));
+    zero_fb_close(fb);
 }
 
-static void put_pixel(struct framebuffer *fb, int x, int y, uint16_t color)
+static void put_pixel(struct zero_framebuffer *fb, int x, int y, uint16_t color)
 {
-    if (!fb->ok || x < 0 || y < 0 || x >= FB_WIDTH || y >= FB_HEIGHT) {
-        return;
-    }
-    fb->pixels[(y * FB_WIDTH) + x] = color;
+    zero_fb_put_pixel(fb, x, y, color);
 }
 
-static void fill_rect(struct framebuffer *fb, int x, int y, int w, int h, uint16_t color)
+static void fill_rect(struct zero_framebuffer *fb, int x, int y, int w, int h, uint16_t color)
 {
     for (int yy = y; yy < y + h; yy++) {
         for (int xx = x; xx < x + w; xx++) {
@@ -309,7 +277,7 @@ static void fill_rect(struct framebuffer *fb, int x, int y, int w, int h, uint16
     }
 }
 
-static void stroke_rect(struct framebuffer *fb, int x, int y, int w, int h, uint16_t color)
+static void stroke_rect(struct zero_framebuffer *fb, int x, int y, int w, int h, uint16_t color)
 {
     fill_rect(fb, x, y, w, 1, color);
     fill_rect(fb, x, y + h - 1, w, 1, color);
@@ -322,7 +290,7 @@ static int text_width(const char *text, int scale)
     return text == NULL ? 0 : (int)strlen(text) * 6 * scale;
 }
 
-static void draw_char(struct framebuffer *fb, int x, int y, char ch, uint16_t color, int scale)
+static void draw_char(struct zero_framebuffer *fb, int x, int y, char ch, uint16_t color, int scale)
 {
     unsigned char uch = (unsigned char)ch;
     if (uch < 32 || uch > 127) {
@@ -340,7 +308,7 @@ static void draw_char(struct framebuffer *fb, int x, int y, char ch, uint16_t co
     }
 }
 
-static void draw_text(struct framebuffer *fb, int x, int y, const char *text, uint16_t color, int scale)
+static void draw_text(struct zero_framebuffer *fb, int x, int y, const char *text, uint16_t color, int scale)
 {
     int cursor = x;
     for (const char *p = text != NULL ? text : ""; *p; p++) {
@@ -349,7 +317,7 @@ static void draw_text(struct framebuffer *fb, int x, int y, const char *text, ui
     }
 }
 
-static void draw_text_clipped(struct framebuffer *fb, int x, int y, int max_w, const char *text, uint16_t color)
+static void draw_text_clipped(struct zero_framebuffer *fb, int x, int y, int max_w, const char *text, uint16_t color)
 {
     char buf[80];
     int max_chars = max_w / 6;
@@ -370,12 +338,12 @@ static void draw_text_clipped(struct framebuffer *fb, int x, int y, int max_w, c
     draw_text(fb, x, y, buf, color, 1);
 }
 
-static void draw_text_centered(struct framebuffer *fb, int cx, int y, const char *text, uint16_t color, int scale)
+static void draw_text_centered(struct zero_framebuffer *fb, int cx, int y, const char *text, uint16_t color, int scale)
 {
     draw_text(fb, cx - text_width(text, scale) / 2, y, text, color, scale);
 }
 
-static void draw_background(struct framebuffer *fb)
+static void draw_background(struct zero_framebuffer *fb)
 {
     fill_rect(fb, 0, 0, FB_WIDTH, FB_HEIGHT, COLOR_BG);
     for (int y = 26; y < FB_HEIGHT - 20; y += 14) {
@@ -385,7 +353,7 @@ static void draw_background(struct framebuffer *fb)
     }
 }
 
-static void draw_prompt(struct framebuffer *fb,
+static void draw_prompt(struct zero_framebuffer *fb,
                         const char *message,
                         const char *identity,
                         const char *request,
@@ -556,7 +524,7 @@ static char *prompt_for_response(const char *message,
                                  const char *info,
                                  int echo)
 {
-    struct framebuffer fb;
+    struct zero_framebuffer fb;
     struct input_set inputs;
     struct screen_lease lease;
     char secret[MAX_SECRET] = "";
@@ -564,7 +532,7 @@ static char *prompt_for_response(const char *message,
 
     screen_lease_acquire(&lease);
     if (fb_open(&fb) != 0) {
-        g_printerr("zero-polkit-agent: failed to open %s: %s\n", FB_DEVICE, strerror(errno));
+        g_printerr("zero-polkit-agent: failed to open internal framebuffer: %s\n", strerror(errno));
         screen_lease_release(&lease);
         return NULL;
     }

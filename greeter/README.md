@@ -36,5 +36,7 @@ The installer runs the equivalent build and installs the binary to:
 - `ENTER`: authenticate selected user
 - `ESC`: power menu
 
-The renderer targets the Zero internal screen (`/dev/fb0` on current hardware).
+The renderer targets the Zero internal screen. It discovers the framebuffer by
+device name because the fbdev path and DRM tiny panel path can expose different
+`/dev/fbN` indexes.
 It is not a LightDM replacement and does not own HDMI login.

@@ -1,23 +1,57 @@
 #!/bin/sh
 set -eu
 
-FB=${CARDPUTER_ZERO_FB:-/dev/fb0}
 WIDTH=${CARDPUTER_ZERO_FB_WIDTH:-320}
 HEIGHT=${CARDPUTER_ZERO_FB_HEIGHT:-170}
+ROTATION=${CARDPUTER_ZERO_FB_ROTATION:-auto}
 
-if [ ! -w "$FB" ]; then
-  echo "zero-splash: framebuffer '$FB' is not writable." >&2
-  exit 0
-fi
-
-python3 - "$FB" "$WIDTH" "$HEIGHT" <<'PY'
+python3 - "$WIDTH" "$HEIGHT" "$ROTATION" <<'PY'
 import mmap
+import os
 import struct
 import sys
 
-fb_path = sys.argv[1]
-width = int(sys.argv[2])
-height = int(sys.argv[3])
+width = int(sys.argv[1])
+height = int(sys.argv[2])
+rotation_arg = sys.argv[3]
+
+def read_text(path):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+def is_internal_name(name):
+    return (
+        "fb_st7789" in name
+        or "st7789" in name
+        or "panel-mipi-dbi" in name
+        or "panel-mipi-dbid" in name
+    )
+
+def resolve_fb():
+    env_fb = os.environ.get("CARDPUTER_ZERO_FB")
+    if env_fb:
+        return env_fb
+    graphics = "/sys/class/graphics"
+    try:
+        entries = sorted(os.listdir(graphics))
+    except OSError:
+        entries = []
+    for entry in entries:
+        if not entry.startswith("fb") or entry == "fbcon":
+            continue
+        name = read_text(os.path.join(graphics, entry, "name"))
+        if is_internal_name(name):
+            return "/dev/" + entry
+    return "/dev/fb0"
+
+fb_path = resolve_fb()
+
+if not os.access(fb_path, os.W_OK):
+    print(f"zero-splash: framebuffer '{fb_path}' is not writable.", file=sys.stderr)
+    raise SystemExit(0)
 
 def rgb565(r, g, b):
     return ((r & 0xF8) << 8) | ((g & 0xF8) << 3) | (b >> 3)
@@ -46,7 +80,10 @@ font = {
 
 def put(buf, x, y, color):
     if 0 <= x < width and 0 <= y < height:
-        off = ((y * width) + x) * 2
+        px, py = map_point(x, y)
+        if not (0 <= px < physical_width and 0 <= py < physical_height):
+            return
+        off = ((py * stride_pixels) + px) * 2
         buf[off:off + 2] = struct.pack("<H", color)
 
 def rect(buf, x, y, w, h, color):
@@ -68,7 +105,34 @@ def text(buf, x, y, value, color, scale=1):
                     rect(buf, cx + col * scale, y + row * scale, scale, scale, color)
         cx += 6 * scale
 
-size = width * height * 2
+mode_text = read_text(f"/sys/class/graphics/{os.path.basename(fb_path)}/virtual_size")
+if "," in mode_text:
+    physical_width, physical_height = [int(part) for part in mode_text.split(",", 1)]
+else:
+    physical_width, physical_height = width, height
+
+stride_text = read_text(f"/sys/class/graphics/{os.path.basename(fb_path)}/stride")
+try:
+    stride_pixels = int(stride_text) // 2 if stride_text else physical_width
+except ValueError:
+    stride_pixels = physical_width
+
+if rotation_arg == "auto":
+    rotation = 270 if physical_width == height and physical_height == width else 0
+else:
+    try:
+        rotation = int(rotation_arg)
+    except ValueError:
+        rotation = 0
+
+def map_point(x, y):
+    if rotation == 90:
+        return height - 1 - y, x
+    if rotation == 270:
+        return y, width - 1 - x
+    return x, y
+
+size = stride_pixels * physical_height * 2
 with open(fb_path, "r+b", buffering=0) as fb:
     buf = mmap.mmap(fb.fileno(), size)
     for y in range(height):

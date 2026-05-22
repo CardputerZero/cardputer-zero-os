@@ -48,11 +48,13 @@ The desktop is never launched as the greeter's root process.
 ## Renderer
 
 The greeter renders a small GUI directly on the Cardputer Zero internal
-framebuffer (`/dev/fb0` on current hardware) and reads keyboard input from
-Linux input events.
+framebuffer and reads keyboard input from Linux input events. It discovers the
+internal framebuffer by device name because the fbdev path and DRM tiny panel
+path can expose different `/dev/fbN` indexes.
 
 It is not a replacement for Pi OS `lightdm` on HDMI. HDMI and the normal Pi OS
-graphical desktop remain part of the base OS/recovery surface.
+graphical desktop remain part of the base OS/recovery surface, but LightDM must
+not autologin.
 
 ## Visual System
 

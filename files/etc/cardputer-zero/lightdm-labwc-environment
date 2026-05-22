@@ -1,0 +1,9 @@
+# Restrict Pi OS LightDM/labwc to the HDMI/vc4 DRM card.
+#
+# The Cardputer Zero internal screen is exposed as a separate DRM card
+# (SPI-1 via panel-mipi-dbi). LightDM is kept as an HDMI/recovery login
+# surface, but it must not claim the Zero internal screen.
+#
+# Do not use /dev/dri/by-path/platform-soc:gpu-card here: wlroots treats ':'
+# as the WLR_DRM_DEVICES list separator.
+WLR_DRM_DEVICES=/dev/dri/cardputer-zero-hdmi

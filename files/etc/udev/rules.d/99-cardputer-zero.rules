@@ -3,7 +3,11 @@
 
 SUBSYSTEM=="input", GROUP="input", MODE="0660", TAG+="uaccess"
 SUBSYSTEM=="video4linux", GROUP="video", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="drm", KERNEL=="card*", GROUP="video", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="drm", KERNEL=="controlD*", GROUP="video", MODE="0660", TAG+="uaccess"
 SUBSYSTEM=="drm", KERNEL=="renderD*", GROUP="render", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="drm", KERNEL=="card*", ENV{ID_PATH}=="platform-3f204000.spi-cs-0", SYMLINK+="dri/cardputer-zero-internal"
+SUBSYSTEM=="drm", KERNEL=="card*", ENV{ID_PATH}=="platform-soc:gpu", SYMLINK+="dri/cardputer-zero-hdmi"
 SUBSYSTEM=="sound", GROUP="audio", MODE="0660", TAG+="uaccess"
 
 KERNEL=="gpiomem", GROUP="gpio", MODE="0660"

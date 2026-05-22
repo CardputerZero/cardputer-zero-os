@@ -1,4 +1,5 @@
 #include "pam_auth.h"
+#include "../common/zero_framebuffer.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -22,11 +23,8 @@
 #define MAX_USERS 64
 #define MAX_PASSWORD 256
 #define MAX_INPUTS 32
-#define FB_DEVICE "/dev/fb0"
-#define FB_WIDTH 320
-#define FB_HEIGHT 170
-#define FB_BYTES_PER_PIXEL 2
-#define FB_SIZE (FB_WIDTH * FB_HEIGHT * FB_BYTES_PER_PIXEL)
+#define FB_WIDTH ZERO_FB_LOGICAL_WIDTH
+#define FB_HEIGHT ZERO_FB_LOGICAL_HEIGHT
 
 #define TOP_BAR_H 20
 #define BOTTOM_BAR_H 20
@@ -41,13 +39,6 @@ struct user_entry {
     gid_t gid;
     char home[512];
     char shell[256];
-};
-
-struct framebuffer {
-    int fd;
-    uint16_t *pixels;
-    size_t size;
-    int ok;
 };
 
 struct input_set {
@@ -147,47 +138,22 @@ static int load_users(struct user_entry users[MAX_USERS])
     return count;
 }
 
-static int fb_open(struct framebuffer *fb)
+static int fb_open(struct zero_framebuffer *fb)
 {
-    memset(fb, 0, sizeof(*fb));
-    fb->fd = open(FB_DEVICE, O_RDWR);
-    if (fb->fd < 0) {
-        return -1;
-    }
-
-    fb->size = FB_SIZE;
-    fb->pixels = mmap(NULL, fb->size, PROT_READ | PROT_WRITE, MAP_SHARED, fb->fd, 0);
-    if (fb->pixels == MAP_FAILED) {
-        close(fb->fd);
-        fb->fd = -1;
-        fb->pixels = NULL;
-        return -1;
-    }
-
-    fb->ok = 1;
-    return 0;
+    return zero_fb_open(fb);
 }
 
-static void fb_close(struct framebuffer *fb)
+static void fb_close(struct zero_framebuffer *fb)
 {
-    if (fb->pixels != NULL) {
-        munmap(fb->pixels, fb->size);
-    }
-    if (fb->fd >= 0) {
-        close(fb->fd);
-    }
-    memset(fb, 0, sizeof(*fb));
+    zero_fb_close(fb);
 }
 
-static void put_pixel(struct framebuffer *fb, int x, int y, uint16_t color)
+static void put_pixel(struct zero_framebuffer *fb, int x, int y, uint16_t color)
 {
-    if (!fb->ok || x < 0 || y < 0 || x >= FB_WIDTH || y >= FB_HEIGHT) {
-        return;
-    }
-    fb->pixels[(y * FB_WIDTH) + x] = color;
+    zero_fb_put_pixel(fb, x, y, color);
 }
 
-static void fill_rect(struct framebuffer *fb, int x, int y, int w, int h, uint16_t color)
+static void fill_rect(struct zero_framebuffer *fb, int x, int y, int w, int h, uint16_t color)
 {
     for (int yy = y; yy < y + h; yy++) {
         for (int xx = x; xx < x + w; xx++) {
@@ -196,7 +162,7 @@ static void fill_rect(struct framebuffer *fb, int x, int y, int w, int h, uint16
     }
 }
 
-static void stroke_rect(struct framebuffer *fb, int x, int y, int w, int h, uint16_t color)
+static void stroke_rect(struct zero_framebuffer *fb, int x, int y, int w, int h, uint16_t color)
 {
     fill_rect(fb, x, y, w, 1, color);
     fill_rect(fb, x, y + h - 1, w, 1, color);
@@ -209,7 +175,7 @@ static int text_width(const char *text, int scale)
     return text == NULL ? 0 : (int)strlen(text) * 6 * scale;
 }
 
-static void draw_char(struct framebuffer *fb, int x, int y, char ch, uint16_t color, int scale)
+static void draw_char(struct zero_framebuffer *fb, int x, int y, char ch, uint16_t color, int scale)
 {
     unsigned char uch = (unsigned char)ch;
     if (uch < 32 || uch > 127) {
@@ -227,7 +193,7 @@ static void draw_char(struct framebuffer *fb, int x, int y, char ch, uint16_t co
     }
 }
 
-static void draw_text(struct framebuffer *fb, int x, int y, const char *text, uint16_t color, int scale)
+static void draw_text(struct zero_framebuffer *fb, int x, int y, const char *text, uint16_t color, int scale)
 {
     int cursor = x;
     for (const char *p = text; p != NULL && *p != '\0'; p++) {
@@ -236,12 +202,12 @@ static void draw_text(struct framebuffer *fb, int x, int y, const char *text, ui
     }
 }
 
-static void draw_text_centered(struct framebuffer *fb, int cx, int y, const char *text, uint16_t color, int scale)
+static void draw_text_centered(struct zero_framebuffer *fb, int cx, int y, const char *text, uint16_t color, int scale)
 {
     draw_text(fb, cx - text_width(text, scale) / 2, y, text, color, scale);
 }
 
-static void draw_text_right(struct framebuffer *fb, int right, int y, const char *text, uint16_t color, int scale)
+static void draw_text_right(struct zero_framebuffer *fb, int right, int y, const char *text, uint16_t color, int scale)
 {
     draw_text(fb, right - text_width(text, scale), y, text, color, scale);
 }
@@ -328,7 +294,7 @@ static int read_battery_percent(void)
     return -1;
 }
 
-static void draw_power_icon(struct framebuffer *fb, int x, int y, uint16_t color)
+static void draw_power_icon(struct zero_framebuffer *fb, int x, int y, uint16_t color)
 {
     fill_rect(fb, x + 4, y, 2, 5, color);
     fill_rect(fb, x + 2, y + 3, 1, 2, color);
@@ -338,7 +304,7 @@ static void draw_power_icon(struct framebuffer *fb, int x, int y, uint16_t color
     fill_rect(fb, x + 2, y + 8, 6, 1, color);
 }
 
-static void draw_user_icon(struct framebuffer *fb, int x, int y, uint16_t color)
+static void draw_user_icon(struct zero_framebuffer *fb, int x, int y, uint16_t color)
 {
     fill_rect(fb, x + 3, y, 4, 1, color);
     fill_rect(fb, x + 2, y + 1, 1, 3, color);
@@ -349,7 +315,7 @@ static void draw_user_icon(struct framebuffer *fb, int x, int y, uint16_t color)
     fill_rect(fb, x + 9, y + 8, 1, 3, color);
 }
 
-static void draw_battery(struct framebuffer *fb, int x, int y, int percent)
+static void draw_battery(struct zero_framebuffer *fb, int x, int y, int percent)
 {
     stroke_rect(fb, x, y, 22, 9, COLOR_LINE);
     fill_rect(fb, x + 22, y + 3, 2, 3, COLOR_LINE);
@@ -365,7 +331,7 @@ static void draw_battery(struct framebuffer *fb, int x, int y, int percent)
     }
 }
 
-static void draw_password_dots(struct framebuffer *fb, int x, int y, size_t count)
+static void draw_password_dots(struct zero_framebuffer *fb, int x, int y, size_t count)
 {
     size_t max_dots = count > 12 ? 12 : count;
     for (size_t i = 0; i < max_dots; i++) {
@@ -373,7 +339,7 @@ static void draw_password_dots(struct framebuffer *fb, int x, int y, size_t coun
     }
 }
 
-static void draw_background(struct framebuffer *fb)
+static void draw_background(struct zero_framebuffer *fb)
 {
     fill_rect(fb, 0, 0, FB_WIDTH, FB_HEIGHT, COLOR_ZERO_BG);
 
@@ -384,7 +350,7 @@ static void draw_background(struct framebuffer *fb)
     }
 }
 
-static void draw_topbar(struct framebuffer *fb)
+static void draw_topbar(struct zero_framebuffer *fb)
 {
     char time_text[6];
     char battery_text[8];
@@ -409,7 +375,7 @@ static void draw_topbar(struct framebuffer *fb)
     draw_battery(fb, 292, 5, battery);
 }
 
-static void draw_bottombar(struct framebuffer *fb)
+static void draw_bottombar(struct zero_framebuffer *fb)
 {
     fill_rect(fb, 0, BOTTOM_BAR_Y, FB_WIDTH, BOTTOM_BAR_H, COLOR_PANEL);
     stroke_rect(fb, 0, BOTTOM_BAR_Y, FB_WIDTH, BOTTOM_BAR_H, COLOR_LINE);
@@ -438,7 +404,7 @@ static const char *status_message(enum ui_mode mode, const char *message, int er
     return error ? "AUTH FAILED" : "PAM AUTHENTICATION";
 }
 
-static void draw_login_panel(struct framebuffer *fb,
+static void draw_login_panel(struct zero_framebuffer *fb,
                              const struct user_entry *users,
                              int user_count,
                              int selected,
@@ -490,7 +456,7 @@ static void draw_login_panel(struct framebuffer *fb,
               error ? COLOR_WARN : COLOR_MUTED, 1);
 }
 
-static void draw_user_menu(struct framebuffer *fb,
+static void draw_user_menu(struct zero_framebuffer *fb,
                            const struct user_entry *users,
                            int user_count,
                            int menu_selected)
@@ -542,7 +508,7 @@ static void draw_user_menu(struct framebuffer *fb,
     }
 }
 
-static void draw_power_menu(struct framebuffer *fb, int power_selection)
+static void draw_power_menu(struct zero_framebuffer *fb, int power_selection)
 {
     const int x = 92;
     const int y = 52;
@@ -566,7 +532,7 @@ static void draw_power_menu(struct framebuffer *fb, int power_selection)
     }
 }
 
-static void draw_frame(struct framebuffer *fb,
+static void draw_frame(struct zero_framebuffer *fb,
                        const struct user_entry *users,
                        int user_count,
                        int selected,
@@ -777,14 +743,30 @@ static int launch_session(struct zero_pam_session *session)
         _exit(127);
     }
 
-    int status;
+    int status = 0;
     while (waitpid(pid, &status, 0) < 0) {
         if (errno != EINTR) {
             return -1;
         }
     }
 
-    return 0;
+    if (WIFEXITED(status)) {
+        int code = WEXITSTATUS(status);
+        fprintf(stderr, "zero-greeter: session for %s exited with status %d\n",
+                session->pw.pw_name, code);
+        return code;
+    }
+
+    if (WIFSIGNALED(status)) {
+        int signal = WTERMSIG(status);
+        fprintf(stderr, "zero-greeter: session for %s terminated by signal %d\n",
+                session->pw.pw_name, signal);
+        return 128 + signal;
+    }
+
+    fprintf(stderr, "zero-greeter: session for %s ended with unhandled wait status %d\n",
+            session->pw.pw_name, status);
+    return -1;
 }
 
 static int handle_login(struct user_entry *user, const char *password, char *message, size_t message_size)
@@ -798,10 +780,14 @@ static int handle_login(struct user_entry *user, const char *password, char *mes
     }
 
     snprintf(message, message_size, "SESSION STARTING");
-    launch_session(&session);
+    int session_status = launch_session(&session);
     zero_pam_end_session(&session, PAM_SUCCESS);
-    snprintf(message, message_size, "SESSION ENDED");
-    return 0;
+    if (session_status == 0) {
+        snprintf(message, message_size, "SESSION ENDED");
+    } else {
+        snprintf(message, message_size, "SESSION FAILED");
+    }
+    return session_status == 0 ? 0 : 1;
 }
 
 static void clamp_selection(int *value, int count)
@@ -819,7 +805,7 @@ static void clamp_selection(int *value, int count)
 
 int main(void)
 {
-    struct framebuffer fb;
+    struct zero_framebuffer fb;
     struct input_set inputs;
     struct user_entry users[MAX_USERS];
     int selected = 0;
@@ -831,7 +817,7 @@ int main(void)
     enum ui_mode mode = UI_LOGIN;
 
     if (fb_open(&fb) != 0) {
-        fprintf(stderr, "zero-greeter: failed to open %s: %s\n", FB_DEVICE, strerror(errno));
+        fprintf(stderr, "zero-greeter: failed to open internal framebuffer: %s\n", strerror(errno));
         return 1;
     }
 

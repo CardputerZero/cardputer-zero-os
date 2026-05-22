@@ -44,10 +44,12 @@ install_tree_files() {
 }
 
 install_file "$REPO_DIR/files/usr/local/bin/zero-splash" /usr/local/bin/zero-splash 0755
+install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-lightdm-labwc" /usr/local/bin/cardputer-zero-lightdm-labwc 0755
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-session" /usr/local/bin/cardputer-zero-session 0755
 install_file "$REPO_DIR/files/usr/local/sbin/zero-helper" /usr/local/sbin/zero-helper 0755
 
 install_file "$REPO_DIR/files/etc/pam.d/zero-greeter" /etc/pam.d/zero-greeter 0644
+install_file "$REPO_DIR/files/usr/share/xgreeters/cardputer-zero-pi-greeter-labwc.desktop" /usr/share/xgreeters/cardputer-zero-pi-greeter-labwc.desktop 0644
 install_file "$REPO_DIR/files/etc/systemd/system/zero-splash.service" /etc/systemd/system/zero-splash.service 0644
 install_file "$REPO_DIR/files/etc/systemd/system/zero-greeter.service" /etc/systemd/system/zero-greeter.service 0644
 install_file "$REPO_DIR/files/etc/systemd/user/zero-polkit-agent.service" /etc/systemd/user/zero-polkit-agent.service 0644
@@ -63,6 +65,7 @@ need_live_command pkexec "polkitd/policykit-1"
 "$REPO_DIR/scripts/setup-splash.sh" "$ROOT"
 "$REPO_DIR/scripts/setup-session.sh" "$ROOT"
 "$REPO_DIR/scripts/setup-udev.sh" "$ROOT"
+"$REPO_DIR/scripts/setup-lightdm-policy.sh" "$ROOT"
 "$REPO_DIR/scripts/setup-quiet-boot.sh" "$ROOT"
 
 # Older cardputer-zero-os builds installed NOPASSWD sudoers entries for

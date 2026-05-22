@@ -142,6 +142,9 @@ It does not disable:
 - `display-manager`
 - `getty@tty1`
 
+It does disable LightDM autologin. HDMI may remain a Pi OS login/recovery
+surface, but it must still require authentication.
+
 More detail: [docs/install.md](docs/install.md)
 
 ## Uninstall
@@ -182,5 +185,6 @@ More detail: [docs/zero-shell-interface.md](docs/zero-shell-interface.md)
 - [docs/polkit.md](docs/polkit.md)
 - [docs/recovery.md](docs/recovery.md)
 - [docs/install.md](docs/install.md)
+- [docs/kms-labwc.md](docs/kms-labwc.md)
 - [docs/zero-shell-interface.md](docs/zero-shell-interface.md)
 - [docs/spec.md](docs/spec.md)
