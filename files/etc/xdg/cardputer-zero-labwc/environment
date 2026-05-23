@@ -1,4 +1,4 @@
-﻿# Cardputer Zero internal labwc session.
+# Cardputer Zero internal labwc session.
 #
 # This configuration is for the internal Wayland/labwc session. It constrains
 # wlroots/labwc to the internal SPI DRM panel instead of HDMI.

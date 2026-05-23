@@ -7,3 +7,26 @@ if command -v zero-key-policy >/dev/null 2>&1; then
   pkill -u "$(id -u)" -f '[z]ero-key-policy' 2>/dev/null || true
   zero-key-policy >/tmp/zero-key-policy.stderr.log 2>&1 &
 fi
+
+if command -v zero-polkit-agent >/dev/null 2>&1; then
+  runtime_dir=${XDG_RUNTIME_DIR:-/tmp}
+  session_id=${XDG_SESSION_ID:-session}
+  pidfile="$runtime_dir/zero-polkit-agent.$session_id.pid"
+  logfile="$runtime_dir/zero-polkit-agent.$session_id.log"
+  agent_running=0
+
+  export CARDPUTER_ZERO_POLKIT_PROMPT=wayland
+
+  if [ -r "$pidfile" ]; then
+    old_pid=$(cat "$pidfile" 2>/dev/null || true)
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+      agent_running=1
+    fi
+  fi
+
+  if [ "$agent_running" != "1" ]; then
+    pkill -u "$(id -u)" -f '[z]ero-polkit-agent' 2>/dev/null || true
+    zero-polkit-agent >>"$logfile" 2>&1 &
+    echo "$!" >"$pidfile"
+  fi
+fi

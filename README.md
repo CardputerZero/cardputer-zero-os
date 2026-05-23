@@ -283,7 +283,7 @@ The model is:
 user app or shell
   -> pkexec /usr/local/sbin/zero-helper <allowed action>
   -> polkit checks org.cardputerzero.zero-helper.*
-  -> zero-polkit-agent shows the Zero-sized password UI when auth is needed
+  -> zero-polkit-agent opens the Zero-sized Wayland password UI when auth is needed
 ```
 
 `zero-helper` is intentionally restricted. It does not run arbitrary shell
@@ -320,7 +320,7 @@ commands, arbitrary `systemctl`, arbitrary `apt`, or arbitrary process kills.
 | --- | --- |
 | `files/etc/xdg/cardputer-zero-labwc/environment` | Internal Zero labwc environment: DRM device, renderer, cursor theme, desktop identity. |
 | `files/etc/xdg/cardputer-zero-labwc/rc.xml` | labwc config for Zero session; includes the `Tab` keybind to call `zero-shell-control tasks`. |
-| `files/etc/xdg/cardputer-zero-labwc/autostart` | Starts `zero-key-policy` inside the Zero labwc session. |
+| `files/etc/xdg/cardputer-zero-labwc/autostart` | Starts `zero-key-policy` and `zero-polkit-agent` inside the real Zero labwc session. |
 | `files/usr/local/bin/zero-shell-control` | Small command bridge: writes ZeroShell command files, focuses ZeroShell, asks `wlrctl` to minimize/close/focus toplevels. |
 | `files/usr/local/bin/zero-key-policy` | Reads the `tca8418c` evdev keyboard and implements short/long Esc policy. |
 | `files/etc/cardputer-zero/lightdm-labwc-environment` | Constrains Pi OS LightDM/labwc to the HDMI DRM card. |
@@ -342,9 +342,10 @@ commands, arbitrary `systemctl`, arbitrary `apt`, or arbitrary process kills.
 | --- | --- |
 | `files/usr/local/sbin/zero-helper` | Restricted root helper for approved system actions. |
 | `files/usr/share/polkit-1/actions/org.cardputerzero.zero-helper.policy` | polkit action definitions for `zero-helper`. |
-| `polkit-agent/zero-polkit-agent.c` | Small Zero-sized polkit authentication agent. |
+| `polkit-agent/zero-polkit-agent.c` | Polkit authentication agent registered inside the active Zero user session. |
+| `polkit-agent/zero-polkit-prompt-wayland.cpp` | 320x170 Wayland password prompt used by the labwc session. |
 | `files/etc/systemd/user/zero-polkit-agent.service` | Legacy/user-service form of the agent; the current session script can also launch the agent directly. |
-| `scripts/setup-polkit-agent.sh` | Builds and installs `zero-polkit-agent`. |
+| `scripts/setup-polkit-agent.sh` | Builds and installs `zero-polkit-agent` and `zero-polkit-prompt-wayland`. |
 
 ### KMS/Overlay Scripts
 
@@ -387,7 +388,8 @@ this profile:
 ```sh
 sudo apt-get install \
   build-essential pkg-config greetd wlrctl labwc wayland-protocols \
-  libpam0g-dev libglib2.0-dev libpolkit-agent-1-dev libpolkit-gobject-1-dev
+  libpam0g-dev libglib2.0-dev libpolkit-agent-1-dev libpolkit-gobject-1-dev \
+  libwayland-dev libxkbcommon-dev
 ```
 
 For the KMS overlay experiment:

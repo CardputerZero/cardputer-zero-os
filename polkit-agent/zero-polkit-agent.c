@@ -18,6 +18,7 @@
 #include <sys/mman.h>
 #include <sys/select.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #define FB_WIDTH ZERO_FB_LOGICAL_WIDTH
@@ -518,11 +519,11 @@ static int read_key(struct input_set *inputs, unsigned short *code, int timeout_
     }
 }
 
-static char *prompt_for_response(const char *message,
-                                 const char *identity,
-                                 const char *request,
-                                 const char *info,
-                                 int echo)
+static char *prompt_for_response_framebuffer(const char *message,
+                                             const char *identity,
+                                             const char *request,
+                                             const char *info,
+                                             int echo)
 {
     struct zero_framebuffer fb;
     struct input_set inputs;
@@ -591,6 +592,127 @@ static char *prompt_for_response(const char *message,
             draw_prompt(&fb, message, identity, request, info, secret, echo);
         }
     }
+}
+
+static char *prompt_for_response_wayland(const char *message,
+                                         const char *identity,
+                                         const char *request,
+                                         const char *info,
+                                         int echo)
+{
+    const char *prompt_path = getenv("CARDPUTER_ZERO_POLKIT_WAYLAND_PROMPT");
+    int pipefd[2];
+    pid_t pid;
+    char output[MAX_SECRET + 8];
+    size_t used = 0;
+    int status = 0;
+
+    if (prompt_path == NULL || prompt_path[0] == '\0') {
+        prompt_path = "/usr/local/bin/zero-polkit-prompt-wayland";
+    }
+
+    if (getenv("WAYLAND_DISPLAY") == NULL || access(prompt_path, X_OK) != 0) {
+        return NULL;
+    }
+
+    if (pipe(pipefd) != 0) {
+        return NULL;
+    }
+
+    pid = fork();
+    if (pid < 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return NULL;
+    }
+
+    if (pid == 0) {
+        int null_fd;
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        if (pipefd[1] > STDERR_FILENO) {
+            close(pipefd[1]);
+        }
+
+        null_fd = open("/dev/null", O_RDONLY);
+        if (null_fd >= 0) {
+            dup2(null_fd, STDIN_FILENO);
+            if (null_fd > STDERR_FILENO) {
+                close(null_fd);
+            }
+        }
+
+        execl(prompt_path,
+              prompt_path,
+              "--message", message != NULL ? message : "Authentication is required",
+              "--identity", identity != NULL ? identity : "",
+              "--request", request != NULL ? request : "Password:",
+              "--info", info != NULL ? info : "",
+              echo ? "--echo" : "--secret",
+              (char *)NULL);
+        _exit(127);
+    }
+
+    close(pipefd[1]);
+    memset(output, 0, sizeof(output));
+    for (;;) {
+        ssize_t n = read(pipefd[0], output + used, sizeof(output) - used - 1);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+        if (n == 0) {
+            break;
+        }
+        used += (size_t)n;
+        if (used + 1 >= sizeof(output)) {
+            break;
+        }
+    }
+    close(pipefd[0]);
+
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+    }
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        secure_clear(output);
+        return NULL;
+    }
+
+    output[used] = '\0';
+    while (used > 0 && (output[used - 1] == '\n' || output[used - 1] == '\r')) {
+        output[--used] = '\0';
+    }
+
+    char *response = strdup(output);
+    secure_clear(output);
+    return response;
+}
+
+static char *prompt_for_response(const char *message,
+                                 const char *identity,
+                                 const char *request,
+                                 const char *info,
+                                 int echo)
+{
+    const char *backend = getenv("CARDPUTER_ZERO_POLKIT_PROMPT");
+
+    if (backend != NULL && strcmp(backend, "framebuffer") == 0) {
+        return prompt_for_response_framebuffer(message, identity, request, info, echo);
+    }
+
+    char *response = prompt_for_response_wayland(message, identity, request, info, echo);
+    if (response != NULL) {
+        return response;
+    }
+
+    if (backend != NULL && strcmp(backend, "wayland") == 0) {
+        return NULL;
+    }
+
+    return prompt_for_response_framebuffer(message, identity, request, info, echo);
 }
 
 static void auth_request_free(struct auth_request *request)

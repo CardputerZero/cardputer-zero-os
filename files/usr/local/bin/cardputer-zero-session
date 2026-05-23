@@ -56,7 +56,6 @@ if [ "$SESSION_MODE" = "labwc" ]; then
     exit 127
   fi
 
-  start_zero_polkit_agent
   exec "$LABWC_SESSION"
 fi
 

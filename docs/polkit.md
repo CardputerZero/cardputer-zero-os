@@ -10,7 +10,7 @@ normal user app
   -> /usr/local/sbin/zero-helper <allowed-action>
   -> pkexec /usr/local/sbin/zero-helper <allowed-action>
   -> polkit policy check
-  -> zero-polkit-agent password prompt
+  -> zero-polkit-agent opens the Zero-sized prompt
   -> root helper performs whitelisted action
 ```
 
@@ -39,20 +39,57 @@ Executable annotation:
 
 ## Agent
 
-`zero-polkit-agent` registers with the current user session and draws an
-internal-screen framebuffer password prompt when polkit asks for authentication.
+`zero-polkit-agent` registers with the current user session. In the normal
+internal labwc session it opens:
+
+```text
+/usr/local/bin/zero-polkit-prompt-wayland
+```
+
+That prompt is a small 320x170 Wayland client with app id:
+
+```text
+cardputer-zero-polkit
+```
+
+This is deliberate. Once the Zero internal screen is owned by DRM/KMS and
+labwc, authorization UI must be a compositor-managed window. It must not draw
+directly to `/dev/fb*` or pause the compositor.
+
+The older framebuffer prompt remains inside `zero-polkit-agent` only for
+explicit legacy framebuffer sessions. The labwc autostart sets:
+
+```text
+CARDPUTER_ZERO_POLKIT_PROMPT=wayland
+```
+
+so a missing or broken Wayland prompt fails clearly instead of silently falling
+back to framebuffer drawing.
 
 Installed files:
 
 ```text
 /usr/local/bin/zero-polkit-agent
+/usr/local/bin/zero-polkit-prompt-wayland
 /etc/systemd/user/zero-polkit-agent.service
 ```
 
-The normal Zero session starts the agent directly from `cardputer-zero-session`.
-This matters because polkit agents register against a specific login session.
-A global `systemctl --user` service may belong to a different HDMI/desktop user
-manager session and will not authorize the Zero framebuffer session.
+The normal Zero labwc session starts the agent from:
+
+```text
+/etc/xdg/cardputer-zero-labwc/autostart
+```
+
+This matters because polkit agents register against a specific logind login
+session. Starting the agent from SSH, from the wrong user manager, or before
+greetd has created the real session can produce:
+
+```text
+Passed session and the session the caller is in differs
+```
+
+That is polkit doing the right thing. The fix is to start the agent from the
+actual labwc session, not to bypass polkit with `sudo`.
 
 ## AppStore Contract
 
