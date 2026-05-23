@@ -5,5 +5,5 @@
 vt = 8
 
 [default_session]
-command = "/usr/local/bin/zero-greeter"
+command = "/usr/local/bin/cardputer-zero-greeter-session"
 user = "_greetd"

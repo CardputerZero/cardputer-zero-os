@@ -15,7 +15,9 @@ dist/
 *.bin
 
 # Generated local binaries
-greeter/zero-greeter
+greeter/zero-greeter-wayland
+polkit-agent/zero-polkit-agent
+polkit-agent/zero-polkit-prompt-wayland
 
 # CMake and compile databases
 CMakeCache.txt
@@ -53,4 +55,3 @@ __pycache__/
 *~
 .DS_Store
 Thumbs.db
-

@@ -51,20 +51,6 @@ if [ -d /sys/class/drm ]; then
   done
 fi
 
-print_section "framebuffers"
-cat /proc/fb 2>/dev/null || true
-for fb in /sys/class/graphics/fb*; do
-  [ -e "$fb" ] || continue
-  echo "--- $fb"
-  for file in name modes virtual_size; do
-    if [ -r "$fb/$file" ]; then
-      printf '%s: ' "$file"
-      cat "$fb/$file" 2>/dev/null || true
-      printf '\n'
-    fi
-  done
-done
-
 print_section "sessions"
 loginctl list-sessions 2>/dev/null || true
 if [ -n "${USER:-}" ]; then

@@ -8,8 +8,6 @@ if [ -r "$ENV_FILE" ]; then
 fi
 
 : "${WLR_DRM_DEVICES:=/dev/dri/cardputer-zero-hdmi}"
-: "${LABWC_FALLBACK_OUTPUT:=NOOP-1}"
 export WLR_DRM_DEVICES
-export LABWC_FALLBACK_OUTPUT
 
 exec /usr/bin/labwc -C /etc/xdg/labwc-greeter/ "$@"

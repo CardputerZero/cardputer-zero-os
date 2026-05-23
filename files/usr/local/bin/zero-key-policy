@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 import os
+import pwd
+import select
+import sys
 import struct
 import subprocess
 import time
@@ -12,6 +15,9 @@ KEY_ESC = 1
 KEY_TAB = 15
 LONG_PRESS_SECONDS = float(os.environ.get("ZERO_ESC_LONG_PRESS_SECONDS", "0.8"))
 DEBUG = os.environ.get("ZERO_KEY_POLICY_DEBUG", "0") == "1"
+ZERO_TTY = os.environ.get("ZERO_KEY_POLICY_TTY", "tty8")
+ZERO_WAYLAND_DISPLAY = os.environ.get("ZERO_KEY_POLICY_WAYLAND_DISPLAY", "wayland-0")
+ZERO_SHELL_PROCESS = os.environ.get("ZERO_KEY_POLICY_SHELL_PROCESS", "zero-shell-wayland")
 
 
 def input_devices():
@@ -35,28 +41,66 @@ def input_devices():
 
 
 def run_control(action):
-    if not shell_running():
+    session = zero_session()
+    if not session:
+        log(f"skip action={action} session=not-found")
+        return
+
+    session_id, uid, username = session
+    if not shell_running(uid):
         log(f"skip action={action} shell=not-running")
         return
-    log(f"action={action}")
-    subprocess.Popen(
-        ["/usr/local/bin/zero-shell-control", action],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+
+    ensure_zero_vt(session_id)
+
+    if action == "minimize-active" and shell_is_active(uid, username):
+        log(f"skip action={action} shell=active")
+        return
+
+    log(f"action={action} session={session_id} user={username}")
+    try:
+        subprocess.run(
+            user_command(uid, username, ["/usr/local/bin/zero-shell-control", action]),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=2,
+        )
+    except subprocess.TimeoutExpired:
+        log(f"timeout action={action}")
+    time.sleep(0.08)
+    ensure_zero_vt(session_id)
+
+
+def user_command(uid, username, command):
+    env = [
+        "PATH=/usr/local/bin:/usr/bin:/bin",
+        f"XDG_RUNTIME_DIR=/run/user/{uid}",
+        f"WAYLAND_DISPLAY={ZERO_WAYLAND_DISPLAY}",
+    ]
+
+    if os.geteuid() == uid:
+        return ["env", *env, *command]
+
+    if os.geteuid() == 0:
+        return ["runuser", "-u", username, "--", "env", *env, *command]
+
+    return ["env", *env, *command]
 
 
 def log(message):
     if not DEBUG:
         return
-    with open("/tmp/zero-key-policy.log", "a", encoding="utf-8") as file:
+    log_path = "/tmp/zero-key-policy.log"
+    if os.geteuid() == 0:
+        os.makedirs("/run/cardputer-zero", exist_ok=True)
+        log_path = "/run/cardputer-zero/zero-key-policy.log"
+    with open(log_path, "a", encoding="utf-8") as file:
         file.write(f"{time.strftime('%H:%M:%S')} {message}\n")
 
 
-def shell_running():
-    uid = os.getuid()
+def shell_running(uid):
     proc_root = "/proc"
     for name in os.listdir(proc_root):
         if not name.isdigit():
@@ -72,12 +116,105 @@ def shell_running():
         if not argv or not argv[0]:
             continue
         executable = os.path.basename(argv[0].decode("utf-8", errors="replace"))
-        if executable == "zero-shell-wayland":
+        if executable == ZERO_SHELL_PROCESS:
             return True
     return False
 
 
+def shell_is_active(uid, username):
+    checks = (
+        ["wlrctl", "toplevel", "find", "state:active", "app_id:cardputer-zero-shell"],
+        ["wlrctl", "toplevel", "find", "state:active", "title:Cardputer Zero Shell"],
+    )
+    for command in checks:
+        try:
+            result = subprocess.run(
+                user_command(uid, username, command),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=1,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode == 0:
+            return True
+    return False
+
+
+def zero_session():
+    try:
+        result = subprocess.run(
+            ["loginctl", "list-sessions", "--no-legend"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+            timeout=1,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) < 7:
+            continue
+        session_id, uid_text, username = fields[0], fields[1], fields[2]
+        seat, session_class, tty = fields[3], fields[5], fields[6]
+        if seat != "seat0" or session_class != "user" or tty != ZERO_TTY:
+            continue
+        try:
+            uid = int(uid_text)
+            pwd.getpwuid(uid)
+        except (ValueError, KeyError):
+            continue
+        return session_id, uid, username
+    return None
+
+
+def active_tty():
+    try:
+        with open("/sys/class/tty/tty0/active", "r", encoding="utf-8") as file:
+            return file.read().strip()
+    except OSError:
+        return ""
+
+
+def ensure_zero_vt(session_id):
+    if active_tty() == ZERO_TTY:
+        return
+    if os.geteuid() != 0:
+        log(f"cannot activate {ZERO_TTY}: not-root")
+        return
+
+    vt_number = ZERO_TTY[3:] if ZERO_TTY.startswith("tty") else ZERO_TTY
+    for command in (["loginctl", "activate", session_id], ["/usr/bin/chvt", vt_number]):
+        try:
+            result = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=1,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode == 0 and active_tty() == ZERO_TTY:
+            log(f"activated {ZERO_TTY} via {' '.join(command)}")
+            return
+    log(f"failed to activate {ZERO_TTY}; active={active_tty()}")
+
+
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--action":
+        if sys.argv[2] not in ("minimize-active", "close-active"):
+            raise SystemExit("zero-key-policy: invalid action")
+        run_control(sys.argv[2])
+        return
+
     device = next(input_devices(), None)
     if not device:
         raise SystemExit("zero-key-policy: tca8418c input device not found")
@@ -88,6 +225,17 @@ def main():
 
     with open(device, "rb", buffering=0) as event_file:
         while True:
+            timeout = None
+            if esc_down_at is not None and not long_action_sent:
+                timeout = max(0, LONG_PRESS_SECONDS - (time.monotonic() - esc_down_at))
+
+            readable, _, _ = select.select([event_file], [], [], timeout)
+            if not readable:
+                if esc_down_at is not None and not long_action_sent:
+                    long_action_sent = True
+                    run_control("close-active")
+                continue
+
             data = event_file.read(EVENT_SIZE)
             if len(data) != EVENT_SIZE:
                 time.sleep(0.05)
@@ -97,7 +245,7 @@ def main():
             if event_type != EV_KEY:
                 continue
 
-            now = sec + usec / 1_000_000.0
+            event_time = sec + usec / 1_000_000.0
             if code in (KEY_ESC, KEY_TAB) or DEBUG:
                 log(f"key code={code} value={value}")
 
@@ -105,14 +253,14 @@ def main():
                 continue
 
             if value == 1:
-                esc_down_at = now
+                esc_down_at = time.monotonic()
                 long_action_sent = False
             elif value == 2 and esc_down_at is not None:
-                if not long_action_sent and now - esc_down_at >= LONG_PRESS_SECONDS:
-                    run_control("close-active")
+                if not long_action_sent and time.monotonic() - esc_down_at >= LONG_PRESS_SECONDS:
                     long_action_sent = True
+                    run_control("close-active")
             elif value == 0 and esc_down_at is not None:
-                duration = now - esc_down_at
+                duration = time.monotonic() - esc_down_at
                 if not long_action_sent:
                     run_control("close-active" if duration >= LONG_PRESS_SECONDS else "minimize-active")
                 esc_down_at = None

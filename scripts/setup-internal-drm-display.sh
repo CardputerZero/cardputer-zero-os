@@ -1,8 +1,8 @@
-﻿#!/bin/sh
+#!/bin/sh
 set -eu
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "setup-kms-experimental.sh must run as root" >&2
+  echo "setup-internal-drm-display.sh must run as root" >&2
   exit 1
 fi
 
@@ -13,13 +13,13 @@ if [ ! -d "$BOOT_DIR" ] && [ -d /boot ]; then
 fi
 
 CONFIG_TXT="$BOOT_DIR/config.txt"
+CMDLINE_TXT="$BOOT_DIR/cmdline.txt"
 OVERLAY_DIR="$BOOT_DIR/overlays"
 BASE_OVERLAY="$OVERLAY_DIR/cardputerzero-overlay.dtbo"
 TARGET_OVERLAY="$OVERLAY_DIR/cardputerzero-kms-display.dtbo"
-OLD_TARGET_OVERLAY="$OVERLAY_DIR/cardputerzero-kms-experimental.dtbo"
 FIRMWARE="/lib/firmware/cardputerzero,st7789v.bin"
 MODULES_LOAD_CONF=/etc/modules-load.d/cardputer-zero-kms.conf
-BACKUP_ROOT=/var/backups/cardputer-zero-os/kms-experimental
+BACKUP_ROOT=/var/backups/cardputer-zero-os/internal-drm-display
 STAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_DIR="$BACKUP_ROOT/$STAMP"
 
@@ -42,13 +42,14 @@ need_file() {
 
 need_command dtc "device-tree-compiler"
 need_file "$CONFIG_TXT"
+need_file "$CMDLINE_TXT"
 need_file "$BASE_OVERLAY"
 
 mkdir -p "$BACKUP_DIR"
 cp -a "$CONFIG_TXT" "$BACKUP_DIR/config.txt"
+cp -a "$CMDLINE_TXT" "$BACKUP_DIR/cmdline.txt"
 cp -a "$BASE_OVERLAY" "$BACKUP_DIR/cardputerzero-overlay.dtbo"
 [ ! -f "$TARGET_OVERLAY" ] || cp -a "$TARGET_OVERLAY" "$BACKUP_DIR/cardputerzero-kms-display.dtbo"
-[ ! -f "$OLD_TARGET_OVERLAY" ] || cp -a "$OLD_TARGET_OVERLAY" "$BACKUP_DIR/cardputerzero-kms-experimental.dtbo"
 [ ! -f "$FIRMWARE" ] || cp -a "$FIRMWARE" "$BACKUP_DIR/$(basename "$FIRMWARE")"
 [ ! -f "$MODULES_LOAD_CONF" ] || cp -a "$MODULES_LOAD_CONF" "$BACKUP_DIR/$(basename "$MODULES_LOAD_CONF")"
 
@@ -59,6 +60,36 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 TARGET_DTS="$TMPDIR/cardputerzero-kms-display.dts"
+BASE_DTS="$TMPDIR/cardputerzero-overlay.dts"
+BASE_DTS_PATCHED="$TMPDIR/cardputerzero-overlay-no-display.dts"
+
+dtc -I dtb -O dts -o "$BASE_DTS" "$BASE_OVERLAY" 2>"$TMPDIR/dtc-base-decompile.log" || {
+  cat "$TMPDIR/dtc-base-decompile.log" >&2
+  exit 1
+}
+
+perl -0e '
+  my $path = shift @ARGV;
+  open my $fh, "<", $path or die "open $path: $!";
+  local $/;
+  my $dts = <$fh>;
+  close $fh;
+
+  my $changed = ($dts =~ s{(st7789v\@0\s*\{\n)(.*?)(\n\s*\};)}{
+    my ($head, $body, $tail) = ($1, $2, $3);
+    $body =~ s/^\s*status\s*=\s*"[^"]*";\n//mg;
+    $head . "\t\t\t\tstatus = \"disabled\";\n" . $body . $tail;
+  }se);
+
+  die "cardputerzero-overlay.dtbo does not contain st7789v\@0\n" unless $changed;
+  print $dts;
+' "$BASE_DTS" >"$BASE_DTS_PATCHED"
+
+dtc -@ -I dts -O dtb -o "$BASE_OVERLAY" "$BASE_DTS_PATCHED" 2>"$TMPDIR/dtc-base-compile.log" || {
+  cat "$TMPDIR/dtc-base-compile.log" >&2
+  exit 1
+}
+chmod 0644 "$BASE_OVERLAY"
 
 cat >"$TARGET_DTS" <<'EOF'
 /dts-v1/;
@@ -109,27 +140,16 @@ cat >"$TARGET_DTS" <<'EOF'
 };
 EOF
 
-if ! grep -q 'panel-mipi-dbi-spi' "$TARGET_DTS"; then
-  echo "failed to generate panel-mipi-dbi-spi overlay source" >&2
-  exit 1
-fi
-
 dtc -@ -I dts -O dtb -o "$TARGET_OVERLAY" "$TARGET_DTS" 2>"$TMPDIR/dtc-compile.log" || {
   cat "$TMPDIR/dtc-compile.log" >&2
   exit 1
 }
 chmod 0644 "$TARGET_OVERLAY"
-rm -f "$OLD_TARGET_OVERLAY"
 
-"$REPO_DIR/scripts/build-st7789v-panel-firmware.sh" "$FIRMWARE"
+sh "$REPO_DIR/scripts/build-st7789v-panel-firmware.sh" "$FIRMWARE"
 
 cat >"$MODULES_LOAD_CONF" <<'EOF'
 # Load the DRM tiny panel driver for the Cardputer Zero internal ST7789 panel.
-#
-# The experimental overlay keeps "cardputerzero,st7789v" as the first
-# compatible string so panel-mipi-dbi requests /lib/firmware/cardputerzero,st7789v.bin.
-# That makes the SPI modalias "spi:st7789v", which does not auto-load the
-# generic panel_mipi_dbi module on this Pi OS kernel. Load it explicitly.
 panel_mipi_dbi
 EOF
 chmod 0644 "$MODULES_LOAD_CONF"
@@ -137,56 +157,57 @@ chmod 0644 "$MODULES_LOAD_CONF"
 CONFIG_TMP="$TMPDIR/config.txt"
 awk '
   BEGIN { in_block = 0 }
+  /^# BEGIN cardputer-zero-internal-drm-display$/ { in_block = 1; next }
+  /^# END cardputer-zero-internal-drm-display$/ { in_block = 0; next }
   /^# BEGIN cardputer-zero-kms-experimental$/ { in_block = 1; next }
   /^# END cardputer-zero-kms-experimental$/ { in_block = 0; next }
   in_block { next }
-  /^# cardputer-zero-kms-disabled: dtoverlay=cardputerzero-overlay([ \t]*|,.*)$/ {
-    print "dtoverlay=cardputerzero-overlay"
-    next
-  }
-  /^[ \t]*dtoverlay=fbtft,.*st7789v.*$/ {
-    print "# cardputer-zero-kms-disabled: " $0
-    next
-  }
-  /^[ \t]*dtoverlay=cardputerzero-kms-experimental([ \t]*|,.*)$/ { next }
   /^[ \t]*dtoverlay=cardputerzero-kms-display([ \t]*|,.*)$/ { next }
+  /^[ \t]*dtoverlay=cardputerzero-kms-experimental([ \t]*|,.*)$/ { next }
   { print }
 ' "$CONFIG_TXT" >"$CONFIG_TMP"
 
 cat >>"$CONFIG_TMP" <<'EOF'
-# BEGIN cardputer-zero-kms-experimental
-# Experimental KMS setup: expose the Cardputer Zero internal ST7789 display as DRM/KMS.
-# The base overlay still owns keyboard, audio, m5ioe1, sensors, and backlight.
-# This display overlay only disables the fbdev ST7789 node and adds a
-# panel-mipi-dbi-spi node on SPI0 CE0.
+# BEGIN cardputer-zero-internal-drm-display
+# Expose the Cardputer Zero internal ST7789 display as a DRM/KMS output.
+# The base overlay remains responsible for keyboard, audio, m5ioe1, sensors,
+# and backlight.
 dtoverlay=cardputerzero-kms-display
-# END cardputer-zero-kms-experimental
+# END cardputer-zero-internal-drm-display
 EOF
 
 if ! grep -q '^dtoverlay=cardputerzero-overlay' "$CONFIG_TMP"; then
   cat >>"$CONFIG_TMP" <<'EOF'
-# cardputer-zero-kms-base-overlay
+# cardputer-zero-base-overlay
 dtoverlay=cardputerzero-overlay
 EOF
 fi
 
 install -m 0644 "$CONFIG_TMP" "$CONFIG_TXT"
 
+CMDLINE_TMP="$TMPDIR/cmdline.txt"
+tr '\n' ' ' <"$CMDLINE_TXT" | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' >"$CMDLINE_TMP"
+if ! grep -qw 'drm_kms_helper.fbdev_emulation=0' "$CMDLINE_TMP"; then
+  printf ' drm_kms_helper.fbdev_emulation=0' >>"$CMDLINE_TMP"
+fi
+printf '\n' >>"$CMDLINE_TMP"
+install -m 0644 "$CMDLINE_TMP" "$CMDLINE_TXT"
+
 cat <<EOF
-Cardputer Zero KMS experiment installed.
+Cardputer Zero internal DRM display setup installed.
 
 Backup:
   $BACKUP_DIR
 
 Installed:
+  $BASE_OVERLAY
   $TARGET_OVERLAY
   $FIRMWARE
   $MODULES_LOAD_CONF
 
 Config updated:
   $CONFIG_TXT
+  $CMDLINE_TXT
 
-Reboot is required to test the DRM/KMS display path.
-If the internal screen does not come up, restore with:
-  sudo sh $REPO_DIR/scripts/restore-kms-experimental.sh
+Reboot is required for the internal DRM display path.
 EOF

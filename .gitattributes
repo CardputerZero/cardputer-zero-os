@@ -1,0 +1,35 @@
+* text=auto
+
+*.sh text eol=lf
+install.sh text eol=lf
+uninstall.sh text eol=lf
+scripts/* text eol=lf
+files/usr/local/bin/* text eol=lf
+files/usr/local/sbin/* text eol=lf
+files/etc/systemd/system/* text eol=lf
+files/etc/systemd/user/* text eol=lf
+files/etc/greetd/* text eol=lf
+files/etc/cardputer-zero/* text eol=lf
+files/etc/xdg/** text eol=lf
+files/etc/udev/rules.d/* text eol=lf
+files/etc/tmpfiles.d/* text eol=lf
+files/usr/share/xgreeters/* text eol=lf
+files/usr/share/polkit-1/actions/* text eol=lf
+*.c text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.conf text eol=lf
+*.xml text eol=lf
+*.policy text eol=lf
+*.desktop text eol=lf
+*.rules text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.dtbo binary
+*.bin binary

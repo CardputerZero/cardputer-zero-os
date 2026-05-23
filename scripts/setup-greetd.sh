@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 set -eu
 
 ROOT=${1:-}
@@ -32,14 +32,9 @@ fi
 cat <<'EOF'
 Cardputer Zero greetd files are installed.
 
-zero-greetd.service is the preferred login backend for the internal Wayland/labwc session.
+zero-greetd.service is the login backend for the internal Wayland/labwc session.
 It keeps the regular Pi OS / HDMI LightDM path independent while giving the
 Zero internal session a real greetd/PAM/logind user session.
-
-If an older build installed the legacy self-managed greeter service, remove it:
-
-  sudo systemctl disable --now zero-greeter.service
-  sudo rm -f /etc/systemd/system/zero-greeter.service
 
 Enable the internal greetd backend with:
 

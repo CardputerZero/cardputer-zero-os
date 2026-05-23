@@ -9,6 +9,7 @@ SUBSYSTEM=="drm", KERNEL=="controlD*", GROUP="video", MODE="0660", TAG+="uaccess
 SUBSYSTEM=="drm", KERNEL=="renderD*", GROUP="render", MODE="0660", TAG+="uaccess"
 SUBSYSTEM=="drm", KERNEL=="card*", ENV{ID_PATH}=="platform-3f204000.spi-cs-0", SYMLINK+="dri/cardputer-zero-internal"
 SUBSYSTEM=="drm", KERNEL=="card*", ENV{ID_PATH}=="platform-soc:gpu", SYMLINK+="dri/cardputer-zero-hdmi"
+SUBSYSTEM=="drm", KERNEL=="card*-HDMI-A-*", ACTION=="change", TAG+="systemd", ENV{SYSTEMD_WANTS}+="zero-hdmi-lightdm-policy.service"
 SUBSYSTEM=="sound", GROUP="audio", MODE="0660", TAG+="uaccess"
 
 KERNEL=="gpiomem", GROUP="gpio", MODE="0660"

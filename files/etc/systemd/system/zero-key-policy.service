@@ -1,0 +1,14 @@
+[Unit]
+Description=Cardputer Zero internal keyboard policy
+Documentation=file:/usr/local/bin/zero-key-policy
+After=systemd-logind.service zero-greetd.service
+Wants=zero-greetd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/zero-key-policy
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

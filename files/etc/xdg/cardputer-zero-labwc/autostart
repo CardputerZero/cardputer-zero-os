@@ -1,12 +1,11 @@
-# Session policy helpers for the internal Zero screen.
+# Session helpers for the internal Zero screen.
 #
 # The primary ZeroShell client is still started by labwc -S from
 # /usr/local/bin/cardputer-zero-labwc-session so the compositor exits with it.
-
-if command -v zero-key-policy >/dev/null 2>&1; then
-  pkill -u "$(id -u)" -f '[z]ero-key-policy' 2>/dev/null || true
-  zero-key-policy >/tmp/zero-key-policy.stderr.log 2>&1 &
-fi
+#
+# Keyboard/VT policy is intentionally not launched here. It is a root-owned OS
+# seat policy because it may need to reactivate the Zero VT after a console
+# switch. See zero-key-policy.service.
 
 if command -v zero-polkit-agent >/dev/null 2>&1; then
   runtime_dir=${XDG_RUNTIME_DIR:-/tmp}
@@ -14,8 +13,6 @@ if command -v zero-polkit-agent >/dev/null 2>&1; then
   pidfile="$runtime_dir/zero-polkit-agent.$session_id.pid"
   logfile="$runtime_dir/zero-polkit-agent.$session_id.log"
   agent_running=0
-
-  export CARDPUTER_ZERO_POLKIT_PROMPT=wayland
 
   if [ -r "$pidfile" ]; then
     old_pid=$(cat "$pidfile" 2>/dev/null || true)

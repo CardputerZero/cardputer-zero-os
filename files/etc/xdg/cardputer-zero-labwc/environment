@@ -6,7 +6,6 @@
 WLR_BACKENDS=drm,libinput
 WLR_DRM_DEVICES=/dev/dri/cardputer-zero-internal
 WLR_RENDERER=pixman
-LABWC_FALLBACK_OUTPUT=NOOP-1
 
 DESKTOP_SESSION=cardputer-zero-labwc
 XDG_CURRENT_DESKTOP=CardputerZero

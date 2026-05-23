@@ -1,11 +1,7 @@
 # Assets
 
-Place Cardputer Zero splash assets here on the target system.
+Static Cardputer Zero OS assets live here.
 
-The default `zero-splash` script looks for:
-
-```text
-/usr/share/cardputer-zero/assets/logo.png
-```
-
-The current splash draws directly to the Cardputer Zero internal framebuffer.
+The current internal-screen login and authorization UI are Wayland clients and
+draw their small UI surfaces at runtime. This directory is reserved for shared
+OS profile assets such as future icons or theme resources.

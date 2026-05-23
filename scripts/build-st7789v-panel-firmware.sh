@@ -48,14 +48,14 @@ while [ "$i" -lt 7 ]; do
 done
 append_byte 1
 
-# ST7789V init sequence derived from the current Cardputer Zero Linux fbdev
-# driver behaviour, expressed as panel-mipi-dbi command bytes.
+# ST7789V init sequence for the Cardputer Zero internal display, expressed as
+# panel-mipi-dbi command bytes.
 #
-# The fbdev driver exposes the user-facing screen as 320x170 with rotate=90.
-# That is implemented on the controller with MADCTL = MV | MY (0xa0), while
-# the 35-pixel panel glass offset is applied as a page offset. Keeping the
-# same controller orientation here prevents the KMS framebuffer from being
-# visually wrapped on the physical landscape screen.
+# The user-facing screen is 320x170 in landscape orientation. That is
+# implemented on the controller with MADCTL = MV | MY (0xa0), while the
+# 35-pixel panel glass offset is applied as a page offset. Keeping this
+# controller orientation prevents the DRM scanout image from wrapping on the
+# physical landscape screen.
 append_command 0x11
 append_command 0x00 0x78
 append_command 0x3a 0x55

@@ -1,53 +1,44 @@
-# zero-greeter
+# zero-greeter-wayland
 
-`zero-greeter` is the Cardputer Zero login boundary.
+`zero-greeter-wayland` is the Cardputer Zero login UI for the internal
+Wayland/labwc greeter session.
 
 It is intentionally small:
 
 - read existing normal users from the base OS,
-- draw a GUI login screen on the Cardputer Zero internal framebuffer,
-- accept password input from the device keyboard input events,
-- authenticate with PAM service `zero-greeter`,
-- open a PAM session,
-- drop privileges to the authenticated user,
-- and exec `/usr/local/bin/cardputer-zero-session`.
+- show a 320x170 Wayland GUI login surface,
+- accept password input through the compositor keyboard focus,
+- talk to greetd over `GREETD_SOCK`,
+- let greetd own PAM, logind, seat, VT, and user-session creation,
+- ask greetd to start `/usr/local/bin/cardputer-zero-session` after successful
+  authentication.
 
-When launched by greetd with `GREETD_SOCK` in the environment, it keeps the same
-320x170 UI but switches backend:
+It does not create users, store passwords, implement account policy, launch the
+desktop as root, own display devices, or read input devices directly.
 
-- create/authenticate the session through greetd IPC,
-- let greetd own PAM/session/seat/TTY handling,
-- ask greetd to start `/usr/local/bin/cardputer-zero-session`.
+## Runtime Chain
 
-`cardputer-zero-session` remains the single handoff point. It reads
-`/etc/cardputer-zero/session.conf` and decides whether the post-login session is
-the stable framebuffer ZeroShell path or the experimental labwc path.
-
-It does not create users, store passwords, implement account policy, or launch
-the user desktop as root.
+```text
+zero-greetd.service
+  -> greetd --vt 8
+  -> /usr/local/bin/cardputer-zero-greeter-session as _greetd
+  -> labwc on /dev/dri/cardputer-zero-internal
+  -> /usr/local/bin/zero-greeter-wayland
+  -> greetd PAM authentication
+  -> /usr/local/bin/cardputer-zero-session as authenticated user
+```
 
 ## Build
 
-On Raspberry Pi OS / Debian:
-
-```sh
-sudo apt-get install build-essential libpam0g-dev
-make
-```
-
-The installer runs the equivalent build and installs the binary to:
+The installer builds this binary with `wayland-scanner`, `libwayland-client`,
+and `libxkbcommon`, then installs it to:
 
 ```text
-/usr/local/bin/zero-greeter
+/usr/local/bin/zero-greeter-wayland
 ```
 
 ## Runtime Keys
 
-- `TAB`: cycle users
-- `ENTER`: authenticate selected user
-- `ESC`: power menu
-
-The renderer targets the Zero internal screen. It discovers the framebuffer by
-device name because the fbdev path and DRM tiny panel path can expose different
-`/dev/fbN` indexes.
-It is not a LightDM replacement and does not own HDMI login.
+- `Tab`: user menu
+- `Enter`: authenticate selected user
+- `Esc`: power menu

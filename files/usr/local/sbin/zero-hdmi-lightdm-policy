@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+
+RUN_DIR=/run/cardputer-zero
+MARKER=$RUN_DIR/hdmi-connected
+
+mkdir -p "$RUN_DIR"
+
+hdmi_connected=0
+for status in /sys/class/drm/card*-HDMI-A-*/status; do
+  [ -r "$status" ] || continue
+  if [ "$(cat "$status" 2>/dev/null || true)" = "connected" ]; then
+    hdmi_connected=1
+    break
+  fi
+done
+
+if [ "$hdmi_connected" = "1" ]; then
+  touch "$MARKER"
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl start lightdm.service >/dev/null 2>&1 || true
+  fi
+  exit 0
+fi
+
+rm -f "$MARKER"
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl stop lightdm.service >/dev/null 2>&1 || true
+fi

@@ -1,38 +1,29 @@
-﻿# ZeroShell Interface
+# ZeroShell Interface
 
-本文档定义 `cardputer-zero-os` 与 `cardputer-zero-shell` 的接口。
+This document defines the interface between `cardputer-zero-os` and
+`cardputer-zero-shell`.
 
 ## Summary
 
 ```text
 cardputer-zero-os
-  owns boot/login/session handoff
+  -> owns login, session, compositor startup, privilege policy
 
 cardputer-zero-shell
-  owns post-login GUI desktop
+  -> owns post-login launcher and task UI
 ```
 
 ## Launch Path
 
-After greetd/PAM authentication, greetd starts:
+After greetd/PAM authentication:
 
 ```text
 /usr/local/bin/cardputer-zero-session
+  -> /usr/local/bin/cardputer-zero-labwc-session
+  -> labwc -S /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
 
-The session script then starts the Wayland/labwc session:
-
-```text
-/usr/local/bin/cardputer-zero-labwc-session
-```
-
-When ZeroShell has a Wayland backend, the labwc session starts:
-
-```text
-/opt/cardputer-zero-shell/bin/zero-shell-wayland
-```
-
-The Wayland shell executable can be overridden in:
+The shell path can be overridden in:
 
 ```text
 /etc/cardputer-zero/session.conf
@@ -46,21 +37,11 @@ CARDPUTER_ZERO_WAYLAND_SHELL=/path/to/zero-shell-wayland
 
 ## Runtime Identity
 
-The shell must run as the authenticated user.
-
-Expected for the Wayland/labwc shell:
+The shell must run as the authenticated user:
 
 ```text
 pi  1234 /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
-
-Not acceptable:
-
-```text
-root  1234 /opt/cardputer-zero-shell/bin/zero-shell
-```
-
-greetd must launch the session as the authenticated user.
 
 ## Environment
 
@@ -73,31 +54,26 @@ XDG_SESSION_DESKTOP=CardputerZero
 CARDPUTER_ZERO_SESSION=1
 ```
 
-## No Framebuffer Fallback
-
-If the Wayland shell is missing or not executable:
+The labwc wrapper exports:
 
 ```text
-/usr/local/bin/cardputer-zero-session
+WLR_DRM_DEVICES=/dev/dri/cardputer-zero-internal
+WLR_BACKENDS=drm,libinput
+WLR_RENDERER=pixman
 ```
 
-must not silently start the legacy direct-framebuffer shell or a login shell.
-Recovery uses SSH or HDMI LightDM. This keeps Wayland/labwc failures visible instead
-of entering the wrong graphics model.
-
-## What OS Provides To Shell
-
-`cardputer-zero-os` provides:
+## OS Provides
 
 - authenticated user session,
+- Wayland compositor on the internal DRM output,
 - device permissions,
-- APPLaunch directories can be populated by shell/app packages,
+- APPLaunch data directories,
+- `zero-shell-control`,
+- root-owned `zero-key-policy.service` for global Esc and VT8 policy,
 - `zero-helper`,
-- internal-screen login handoff.
+- polkit agent.
 
-## What OS Does Not Provide
-
-`cardputer-zero-os` does not provide:
+## OS Does Not Provide
 
 - launcher home UI,
 - application scanner,
@@ -107,4 +83,4 @@ of entering the wrong graphics model.
 - settings UI,
 - system monitor UI.
 
-Those are shell/application responsibilities.
+Those are shell or application responsibilities.

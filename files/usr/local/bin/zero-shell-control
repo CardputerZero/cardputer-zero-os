@@ -45,9 +45,6 @@ case "${1:-}" in
       send_shell_command hide-tasks
       exit 0
     fi
-    if command -v wlrctl >/dev/null 2>&1; then
-      wlrctl toplevel minimize state:active >/dev/null 2>&1 || true
-    fi
     focus_shell
     send_shell_command hide-tasks
     ;;

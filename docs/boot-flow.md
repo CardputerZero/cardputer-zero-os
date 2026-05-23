@@ -1,49 +1,53 @@
 # Boot Flow
 
-`cardputer-zero-os` owns the userspace handoff from Raspberry Pi OS boot into
-the Cardputer Zero login boundary.
+`cardputer-zero-os` owns the handoff from Raspberry Pi OS boot to the Cardputer
+Zero internal-screen login and user session.
 
 ```text
 systemd boot
-  -> zero-splash.service
-  -> zero-greetd.service
-  -> zero-greeter UI as greetd frontend
-  -> greetd/PAM authenticate existing user
+  -> zero-hdmi-lightdm-policy.service
+  -> zero-greetd.service on VT8
+  -> zero-key-policy.service watches the internal keyboard and VT8 policy
+  -> greetd starts cardputer-zero-greeter-session as _greetd
+  -> cardputer-zero-greeter-session starts labwc on the internal DRM output
+  -> zero-greeter-wayland shows the login UI
+  -> greetd/PAM authenticates an existing Linux user
   -> cardputer-zero-session
-  -> cardputer-zero-shell
+  -> cardputer-zero-labwc-session
+  -> labwc starts zero-shell-wayland as the authenticated user
 ```
 
 ## Responsibilities
 
 `cardputer-zero-os` is responsible for:
 
-- reducing visible default boot noise where practical,
-- showing a userspace Zero splash on the internal screen,
-- starting the Zero greeter on the internal screen,
-- authenticating existing users through PAM,
-- opening a real user session,
-- and launching the Cardputer Zero shell as that user.
+- internal-screen DRM display setup,
+- starting the internal greeter session,
+- authenticating existing users through greetd/PAM,
+- opening a real logind user session,
+- launching the Cardputer Zero labwc session as that user.
 
 It is not responsible for:
 
-- creating OS users,
-- replacing Raspberry Pi firmware output,
-- replacing all early kernel output,
+- creating users,
 - autologin,
-- or implementing the post-login desktop UI.
+- implementing the post-login desktop UI,
+- replacing HDMI LightDM.
 
 ## systemd Units
 
-`zero-splash.service` runs early in userspace and leaves a simple branded
-startup frame on the Cardputer Zero internal framebuffer.
+`zero-hdmi-lightdm-policy.service` keeps the regular Pi OS HDMI display-manager
+path independent from the internal screen.
 
-`zero-greetd.service` starts a separate internal-screen greetd instance on the
-Zero login VT. Its greeter command is `/usr/local/bin/zero-greeter`, which
-renders the internal-screen GUI and talks to greetd over `GREETD_SOCK`.
+`zero-greetd.service` starts a dedicated greetd instance on VT8. The service
+uses `/etc/greetd/cardputer-zero.toml`, whose default session is
+`/usr/local/bin/cardputer-zero-greeter-session` as `_greetd`.
 
-The legacy self-managed `zero-greeter.service` unit is not part of the current
-architecture. Keeping only `zero-greetd.service` avoids two competing login
-backends for the same internal-screen UI.
+`zero-key-policy.service` is a root-owned OS seat policy. It listens only to
+the Cardputer keyboard, implements global short/long Esc behavior, and
+reactivates the Zero VT8 session if the kernel console becomes active. It calls
+`zero-shell-control` as the authenticated user; it does not run ZeroShell or
+apps as root.
 
-It does not replace Pi OS `lightdm` on HDMI. The session launched by greetd
-must run as the authenticated user.
+The user session launched by greetd must run as the authenticated user, not as
+root and not as `_greetd`.

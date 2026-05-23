@@ -1,49 +1,52 @@
 # Recovery
 
-Recovery is a first-class boundary for `cardputer-zero-os`.
+Recovery is explicit. `cardputer-zero-os` should fail visibly through logs and
+standard recovery surfaces instead of silently starting a different internal
+graphics path.
 
-The profile should never trap the device behind a broken shell, broken greeter,
-or root-only launcher.
+## Recovery Surfaces
 
-## Disable the Internal Greeter Backend
+- SSH,
+- HDMI LightDM,
+- systemd service control,
+- boot backups under `/var/backups/cardputer-zero-os`.
 
-From SSH or another Pi OS recovery surface:
+## Disable Internal Greeter
 
 ```sh
 sudo systemctl disable --now zero-greetd.service
 ```
 
-HDMI LightDM is kept as the normal recovery login surface.
+HDMI LightDM remains the normal graphical recovery login surface.
 
-## Restart the Internal Greeter Backend
-
-```sh
-/usr/local/sbin/zero-helper restart-greeter
-```
-
-or:
+## Restart Internal Greeter
 
 ```sh
 sudo systemctl restart zero-greetd.service
 ```
 
-## Missing Wayland Shell
+or through the helper when already logged in:
 
-If `/opt/cardputer-zero-shell/bin/zero-shell-wayland` is missing, the session
-must not silently fall back to the legacy direct-framebuffer shell. It should
-remain in the labwc bring-up session or return to the internal greetd login.
+```sh
+pkexec /usr/local/sbin/zero-helper restart-greeter
+```
 
-Use SSH or HDMI LightDM for recovery and diagnostics.
+## Logs
+
+```sh
+journalctl -b -u zero-greetd.service --no-pager
+cat /tmp/cardputer-zero-greeter-session.log
+```
 
 ## Restore Boot Command Line
 
-If quiet boot changes cause trouble, restore the backup:
+If quiet boot changes cause trouble:
 
 ```sh
 sudo cp /boot/firmware/cmdline.txt.cardputer-zero.bak /boot/firmware/cmdline.txt
 ```
 
-or, on systems using the older boot layout:
+or:
 
 ```sh
 sudo cp /boot/cmdline.txt.cardputer-zero.bak /boot/cmdline.txt
@@ -55,7 +58,5 @@ sudo cp /boot/cmdline.txt.cardputer-zero.bak /boot/cmdline.txt
 sudo ./uninstall.sh
 ```
 
-The uninstall script disables Zero services, removes installed profile files,
-and restores a backed-up `cmdline.txt` when present.
-
-It does not delete user accounts or remove groups.
+Uninstall disables Zero services, removes installed profile files, and restores
+a backed-up `cmdline.txt` when present. It does not delete users.

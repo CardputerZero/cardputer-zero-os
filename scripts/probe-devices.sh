@@ -1,10 +1,6 @@
 #!/bin/sh
 set -eu
 
-echo "Framebuffer:"
-ls -l /dev/fb* 2>/dev/null || true
-
-echo
 echo "DRM:"
 ls -l /dev/dri 2>/dev/null || true
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Cardputer Zero HDMI LightDM policy
+After=systemd-udevd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/zero-hdmi-lightdm-policy
+
+[Install]
+WantedBy=multi-user.target

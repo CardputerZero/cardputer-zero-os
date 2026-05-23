@@ -21,22 +21,7 @@ print_section "boot config"
 for path in /boot/firmware/config.txt /boot/config.txt; do
   if [ -f "$path" ]; then
     echo "$path"
-    grep -nE 'dtoverlay|dtparam|kms|fbtft|mipi|dbi|cardputer|disable_fw_kms|max_framebuffers|display_auto_detect' "$path" || true
-  fi
-done
-
-print_section "framebuffer"
-for fb in /sys/class/graphics/fb*; do
-  [ -e "$fb" ] || continue
-  echo "--- $fb"
-  read_if_exists "$fb/name"
-  read_if_exists "$fb/modes"
-  read_if_exists "$fb/virtual_size"
-  read_if_exists "$fb/stride"
-  read_if_exists "$fb/bits_per_pixel"
-  if [ -e "$fb/device" ]; then
-    printf '%s/device: ' "$fb"
-    readlink -f "$fb/device" || true
+    grep -nE 'dtoverlay|dtparam|kms|mipi|dbi|cardputer|disable_fw_kms|display_auto_detect' "$path" || true
   fi
 done
 
@@ -55,7 +40,7 @@ else
 fi
 
 print_section "modules"
-lsmod | grep -Ei 'st7789|fbtft|mipi|dbi|tiny|drm|vc4|spi_bcm2835|backlight' || true
+lsmod | grep -Ei 'st7789|mipi|dbi|tiny|drm|vc4|spi_bcm2835|backlight' || true
 
 print_section "spi"
 for dev in /sys/bus/spi/devices/*; do
@@ -72,7 +57,7 @@ print_section "firmware overlays"
 for dir in /boot/firmware/overlays /boot/overlays; do
   [ -d "$dir" ] || continue
   echo "$dir"
-  find "$dir" -maxdepth 1 -type f \( -name '*cardputer*' -o -name '*mipi*' -o -name '*dbi*' -o -name '*fbtft*' -o -name '*st77*' \) -printf '%f\n' | sort
+  find "$dir" -maxdepth 1 -type f \( -name '*cardputer*' -o -name '*mipi*' -o -name '*dbi*' -o -name '*st77*' \) -printf '%f\n' | sort
 done
 
 print_section "labwc/wlroots"

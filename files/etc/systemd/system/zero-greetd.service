@@ -1,7 +1,7 @@
 [Unit]
 Description=Cardputer Zero Internal greetd
 Documentation=man:greetd(1) man:greetd-ipc(7)
-After=systemd-user-sessions.service zero-splash.service
+After=systemd-user-sessions.service
 Conflicts=getty@tty8.service
 StartLimitBurst=5
 StartLimitIntervalSec=30
@@ -13,6 +13,7 @@ Type=simple
 # the internal labwc session can be launched through greetd.
 ExecStartPre=/usr/bin/install -d -m 1777 -o root -g root /tmp/.X11-unix
 ExecStart=/usr/sbin/greetd -c /etc/greetd/cardputer-zero.toml --vt 8
+ExecStartPost=/bin/sh -c 'sleep 1; /usr/bin/chvt 8 || true'
 IgnoreSIGPIPE=no
 SendSIGHUP=yes
 TimeoutStopSec=30s

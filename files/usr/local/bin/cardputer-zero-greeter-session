@@ -1,0 +1,113 @@
+#!/bin/sh
+set -eu
+
+CONFIG=/etc/cardputer-zero/session.conf
+LABWC_BIN=${CARDPUTER_ZERO_LABWC_BIN:-/usr/bin/labwc}
+LABWC_CONFIG_DIR=${CARDPUTER_ZERO_GREETER_LABWC_CONFIG_DIR:-/etc/xdg/cardputer-zero-greeter-labwc}
+GREETER_BIN=${CARDPUTER_ZERO_GREETER:-/usr/local/bin/zero-greeter-wayland}
+LOG_FILE=${CARDPUTER_ZERO_GREETER_LOG:-/tmp/cardputer-zero-greeter-session.log}
+
+if [ -r "$CONFIG" ]; then
+  # shellcheck disable=SC1090
+  . "$CONFIG"
+fi
+
+LABWC_BIN=${CARDPUTER_ZERO_LABWC_BIN:-$LABWC_BIN}
+LABWC_CONFIG_DIR=${CARDPUTER_ZERO_GREETER_LABWC_CONFIG_DIR:-$LABWC_CONFIG_DIR}
+GREETER_BIN=${CARDPUTER_ZERO_GREETER:-$GREETER_BIN}
+
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=CardputerZero
+export XDG_SESSION_DESKTOP=CardputerZero
+export DESKTOP_SESSION=cardputer-zero-greeter
+export CARDPUTER_ZERO_GREETER_SESSION=1
+
+: "${WLR_BACKENDS:=drm,libinput}"
+: "${WLR_DRM_DEVICES:=/dev/dri/cardputer-zero-internal}"
+: "${WLR_RENDERER:=pixman}"
+: "${XCURSOR_THEME:=cardputer-zero-empty}"
+: "${XCURSOR_SIZE:=1}"
+: "${WAYLAND_DISPLAY:=wayland-0}"
+
+export WLR_BACKENDS
+export WLR_DRM_DEVICES
+export WLR_RENDERER
+export XCURSOR_THEME
+export XCURSOR_SIZE
+export WAYLAND_DISPLAY
+
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+  XDG_RUNTIME_DIR="/tmp/cardputer-zero-greeter-runtime-$(id -u)"
+  export XDG_RUNTIME_DIR
+fi
+install -d -m 0700 "$XDG_RUNTIME_DIR"
+rm -f "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY.lock"
+
+if [ ! -x "$LABWC_BIN" ]; then
+  echo "cardputer-zero-greeter-session: labwc not found: $LABWC_BIN" >&2
+  exit 127
+fi
+if [ ! -x "$GREETER_BIN" ]; then
+  echo "cardputer-zero-greeter-session: greeter not found: $GREETER_BIN" >&2
+  exit 127
+fi
+if [ ! -e "$WLR_DRM_DEVICES" ]; then
+  echo "cardputer-zero-greeter-session: internal DRM device not found: $WLR_DRM_DEVICES" >&2
+  exit 1
+fi
+
+for stale_pid in $(pgrep -u "$(id -u)" -f "$LABWC_BIN -C $LABWC_CONFIG_DIR" 2>/dev/null || true); do
+  if [ "$stale_pid" != "$$" ]; then
+    echo "cardputer-zero-greeter-session: stopping stale greeter labwc pid=$stale_pid" >>"$LOG_FILE" 2>&1 || true
+    kill "$stale_pid" >/dev/null 2>&1 || true
+  fi
+done
+sleep 0.2
+
+(
+  echo
+  echo "=== cardputer-zero-greeter-session $(date -Is 2>/dev/null || date) ==="
+  echo "uid=$(id -u) user=$(id -un 2>/dev/null || true)"
+  echo "GREETD_SOCK=${GREETD_SOCK:-}"
+  echo "XDG_SESSION_ID=${XDG_SESSION_ID:-} XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+  echo "WLR_DRM_DEVICES=$WLR_DRM_DEVICES"
+  echo "LABWC_BIN=$LABWC_BIN"
+  echo "LABWC_CONFIG_DIR=$LABWC_CONFIG_DIR"
+  echo "GREETER_BIN=$GREETER_BIN"
+) >>"$LOG_FILE" 2>&1 || true
+
+"$LABWC_BIN" -C "$LABWC_CONFIG_DIR" >>"$LOG_FILE" 2>&1 &
+labwc_pid=$!
+
+cleanup() {
+  kill "$labwc_pid" >/dev/null 2>&1 || true
+  wait "$labwc_pid" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+for _ in $(seq 1 100); do
+  if [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
+    echo "cardputer-zero-greeter-session: Wayland socket is ready: $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" >>"$LOG_FILE" 2>&1 || true
+    break
+  fi
+  if ! kill -0 "$labwc_pid" 2>/dev/null; then
+    wait "$labwc_pid" >/dev/null 2>&1
+    labwc_status=$?
+    echo "cardputer-zero-greeter-session: labwc exited before Wayland socket appeared, status=$labwc_status" >>"$LOG_FILE" 2>&1 || true
+    echo "cardputer-zero-greeter-session: labwc exited before Wayland socket appeared" >&2
+    exit 1
+  fi
+  sleep 0.05
+done
+
+if [ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
+  echo "cardputer-zero-greeter-session: Wayland socket did not appear: $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" >>"$LOG_FILE" 2>&1 || true
+  ls -la "$XDG_RUNTIME_DIR" >>"$LOG_FILE" 2>&1 || true
+  echo "cardputer-zero-greeter-session: Wayland socket did not appear: $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" >&2
+  exit 1
+fi
+
+"$GREETER_BIN" >>"$LOG_FILE" 2>&1
+greeter_status=$?
+echo "cardputer-zero-greeter-session: greeter exited, status=$greeter_status" >>"$LOG_FILE" 2>&1 || true
+exit "$greeter_status"

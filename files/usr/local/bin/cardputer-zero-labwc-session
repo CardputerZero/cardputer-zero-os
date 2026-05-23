@@ -23,14 +23,12 @@ export CARDPUTER_ZERO_LABWC_SESSION=1
 : "${WLR_BACKENDS:=drm,libinput}"
 : "${WLR_DRM_DEVICES:=/dev/dri/cardputer-zero-internal}"
 : "${WLR_RENDERER:=pixman}"
-: "${LABWC_FALLBACK_OUTPUT:=NOOP-1}"
 : "${XCURSOR_THEME:=cardputer-zero-empty}"
 : "${XCURSOR_SIZE:=1}"
 
 export WLR_BACKENDS
 export WLR_DRM_DEVICES
 export WLR_RENDERER
-export LABWC_FALLBACK_OUTPUT
 export XCURSOR_THEME
 export XCURSOR_SIZE
 
@@ -60,17 +58,7 @@ fi
 cat >&2 <<'EOF'
 cardputer-zero-labwc-session: no Wayland ZeroShell command configured.
 
-Set CARDPUTER_ZERO_WAYLAND_SHELL in /etc/cardputer-zero/session.conf after
-ZeroShell has a Wayland client backend. Refusing to enter the legacy
-framebuffer shell or a silent black hold session.
+Set CARDPUTER_ZERO_WAYLAND_SHELL in /etc/cardputer-zero/session.conf.
 EOF
-
-if [ "${CARDPUTER_ZERO_ALLOW_LABWC_HOLD:-0}" = "1" ]; then
-  cat >&2 <<'EOF'
-
-CARDPUTER_ZERO_ALLOW_LABWC_HOLD=1 is set; keeping labwc alive for diagnostics.
-EOF
-  exec "$LABWC_BIN" -C "$LABWC_CONFIG_DIR" -S "sh -lc 'wlr-randr 2>/dev/null || true; sleep infinity'"
-fi
 
 exit 127
