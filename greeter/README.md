@@ -12,6 +12,17 @@ It is intentionally small:
 - drop privileges to the authenticated user,
 - and exec `/usr/local/bin/cardputer-zero-session`.
 
+When launched by greetd with `GREETD_SOCK` in the environment, it keeps the same
+320x170 UI but switches backend:
+
+- create/authenticate the session through greetd IPC,
+- let greetd own PAM/session/seat/TTY handling,
+- ask greetd to start `/usr/local/bin/cardputer-zero-session`.
+
+`cardputer-zero-session` remains the single handoff point. It reads
+`/etc/cardputer-zero/session.conf` and decides whether the post-login session is
+the stable framebuffer ZeroShell path or the experimental labwc path.
+
 It does not create users, store passwords, implement account policy, or launch
 the user desktop as root.
 

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <theme>
+    <name>PiXtrix</name>
+    <cornerRadius>0</cornerRadius>
+    <keepBorder>yes</keepBorder>
+    <titlebar>
+      <layout></layout>
+    </titlebar>
+  </theme>
+
+  <keyboard>
+    <numlock>off</numlock>
+    <default />
+    <keybind key="Tab">
+      <action name="Execute" command="/usr/local/bin/zero-shell-control tasks" />
+    </keybind>
+  </keyboard>
+
+  <mouse>
+    <default />
+  </mouse>
+
+  <snapping>
+    <range>0</range>
+    <topMaximize>no</topMaximize>
+  </snapping>
+
+  <windowSwitcher show="yes" preview="no" outlines="yes" allWorkspaces="no">
+    <fields>
+      <field content="icon" width="10%" />
+      <field content="title" width="90%" />
+    </fields>
+  </windowSwitcher>
+</openbox_config>

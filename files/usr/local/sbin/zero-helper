@@ -212,7 +212,7 @@ case "$cmd" in
     systemctl poweroff
     ;;
   restart-greeter)
-    systemctl restart zero-greeter.service
+    systemctl restart zero-greetd.service
     ;;
   network-restart)
     restart_network

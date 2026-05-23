@@ -13,6 +13,9 @@ if [ -r "$CONFIG" ]; then
   . "$CONFIG"
 fi
 
+SESSION_MODE=${CARDPUTER_ZERO_SESSION_MODE:-labwc}
+LABWC_SESSION=${CARDPUTER_ZERO_LABWC_SESSION:-/usr/local/bin/cardputer-zero-labwc-session}
+
 export CARDPUTER_ZERO_FB=${CARDPUTER_ZERO_FB:-/dev/fb1}
 export ZEROSHELL_FBDEV=${ZEROSHELL_FBDEV:-$CARDPUTER_ZERO_FB}
 export LV_LINUX_FBDEV_DEVICE=${LV_LINUX_FBDEV_DEVICE:-$CARDPUTER_ZERO_FB}
@@ -46,10 +49,27 @@ start_zero_polkit_agent() {
   echo "$!" >"$pidfile"
 }
 
+if [ "$SESSION_MODE" = "labwc" ]; then
+  if [ ! -x "$LABWC_SESSION" ]; then
+    printf '\nCardputer Zero labwc session wrapper was not found:\n  %s\n\n' "$LABWC_SESSION" >&2
+    printf 'Refusing to fall back to the legacy framebuffer shell.\n' >&2
+    exit 127
+  fi
+
+  start_zero_polkit_agent
+  exec "$LABWC_SESSION"
+fi
+
+if [ "$SESSION_MODE" != "framebuffer" ]; then
+  printf '\nUnknown Cardputer Zero session mode: %s\n\n' "$SESSION_MODE" >&2
+  printf 'Expected: framebuffer or labwc\n' >&2
+  exit 2
+fi
+
 if [ ! -x "$SHELL_BIN" ]; then
   printf '\nCardputer Zero shell was not found:\n  %s\n\n' "$SHELL_BIN" >&2
-  printf 'Starting a login shell for recovery.\n' >&2
-  exec "${SHELL:-/bin/sh}" -l
+  printf 'The legacy framebuffer mode was explicitly requested but its shell is missing.\n' >&2
+  exit 127
 fi
 
 start_zero_polkit_agent

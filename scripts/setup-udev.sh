@@ -4,6 +4,7 @@ set -eu
 ROOT=${1:-}
 
 chmod 0644 "$ROOT/etc/udev/rules.d/99-cardputer-zero.rules"
+rm -f "$ROOT/etc/udev/rules.d/99-ignore-i2c-key.rules"
 
 if [ -n "$ROOT" ]; then
   echo "DESTDIR install: skipped live group creation and user membership updates." >&2

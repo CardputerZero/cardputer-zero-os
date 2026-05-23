@@ -1,0 +1,9 @@
+﻿[terminal]
+# Zero internal login VT for the Wayland/labwc session.
+#
+# This keeps the regular Pi OS / LightDM display-manager path independent.
+vt = 8
+
+[default_session]
+command = "/usr/local/bin/zero-greeter"
+user = "_greetd"

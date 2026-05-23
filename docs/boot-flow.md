@@ -6,8 +6,9 @@ the Cardputer Zero login boundary.
 ```text
 systemd boot
   -> zero-splash.service
-  -> zero-greeter.service
-  -> PAM authenticate existing user
+  -> zero-greetd.service
+  -> zero-greeter UI as greetd frontend
+  -> greetd/PAM authenticate existing user
   -> cardputer-zero-session
   -> cardputer-zero-shell
 ```
@@ -36,8 +37,13 @@ It is not responsible for:
 `zero-splash.service` runs early in userspace and leaves a simple branded
 startup frame on the Cardputer Zero internal framebuffer.
 
-`zero-greeter.service` renders the internal-screen GUI greeter and restarts if
-the greeter exits. It does not replace Pi OS `lightdm` on HDMI.
+`zero-greetd.service` starts a separate internal-screen greetd instance on the
+Zero login VT. Its greeter command is `/usr/local/bin/zero-greeter`, which
+renders the internal-screen GUI and talks to greetd over `GREETD_SOCK`.
 
-The greeter itself may run as root because it is a login component. The session
-it launches must run as the authenticated user.
+The legacy self-managed `zero-greeter.service` unit is not part of the current
+architecture. Keeping only `zero-greetd.service` avoids two competing login
+backends for the same internal-screen UI.
+
+It does not replace Pi OS `lightdm` on HDMI. The session launched by greetd
+must run as the authenticated user.

@@ -1,0 +1,9 @@
+# Session policy helpers for the internal Zero screen.
+#
+# The primary ZeroShell client is still started by labwc -S from
+# /usr/local/bin/cardputer-zero-labwc-session so the compositor exits with it.
+
+if command -v zero-key-policy >/dev/null 2>&1; then
+  pkill -u "$(id -u)" -f '[z]ero-key-policy' 2>/dev/null || true
+  zero-key-policy >/tmp/zero-key-policy.stderr.log 2>&1 &
+fi

@@ -2,6 +2,7 @@
 # Users still need group membership or logind/uaccess support from the base OS.
 
 SUBSYSTEM=="input", GROUP="input", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="tca8418c", ENV{ID_INPUT}="1", ENV{ID_INPUT_KEYBOARD}="1", TAG+="uaccess"
 SUBSYSTEM=="video4linux", GROUP="video", MODE="0660", TAG+="uaccess"
 SUBSYSTEM=="drm", KERNEL=="card*", GROUP="video", MODE="0660", TAG+="uaccess"
 SUBSYSTEM=="drm", KERNEL=="controlD*", GROUP="video", MODE="0660", TAG+="uaccess"

@@ -12,17 +12,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/mman.h>
 #include <sys/select.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
 #define MAX_USERS 64
 #define MAX_PASSWORD 256
 #define MAX_INPUTS 32
+#define MAX_JSON 8192
 #define FB_WIDTH ZERO_FB_LOGICAL_WIDTH
 #define FB_HEIGHT ZERO_FB_LOGICAL_HEIGHT
 
@@ -689,6 +692,266 @@ static void run_helper(const char *arg)
     }
 }
 
+static int greetd_is_active(void)
+{
+    const char *sock = getenv("GREETD_SOCK");
+    return sock != NULL && sock[0] != '\0';
+}
+
+static void json_escape(const char *input, char *out, size_t out_size)
+{
+    size_t pos = 0;
+
+    if (out_size == 0) {
+        return;
+    }
+
+    for (const unsigned char *p = (const unsigned char *)input;
+         p != NULL && *p != '\0' && pos + 1 < out_size;
+         p++) {
+        unsigned char ch = *p;
+        if ((ch == '"' || ch == '\\') && pos + 2 < out_size) {
+            out[pos++] = '\\';
+            out[pos++] = (char)ch;
+        } else if (ch == '\n' && pos + 2 < out_size) {
+            out[pos++] = '\\';
+            out[pos++] = 'n';
+        } else if (ch == '\r' && pos + 2 < out_size) {
+            out[pos++] = '\\';
+            out[pos++] = 'r';
+        } else if (ch == '\t' && pos + 2 < out_size) {
+            out[pos++] = '\\';
+            out[pos++] = 't';
+        } else if (ch >= 0x20 && ch < 0x80) {
+            out[pos++] = (char)ch;
+        }
+    }
+    out[pos] = '\0';
+}
+
+static int write_full(int fd, const void *buf, size_t len)
+{
+    const char *cursor = buf;
+    while (len > 0) {
+        ssize_t n = write(fd, cursor, len);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        cursor += n;
+        len -= (size_t)n;
+    }
+    return 0;
+}
+
+static int read_full(int fd, void *buf, size_t len)
+{
+    char *cursor = buf;
+    while (len > 0) {
+        ssize_t n = read(fd, cursor, len);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        if (n == 0) {
+            return -1;
+        }
+        cursor += n;
+        len -= (size_t)n;
+    }
+    return 0;
+}
+
+static int greetd_connect(void)
+{
+    const char *sock_path = getenv("GREETD_SOCK");
+    struct sockaddr_un addr;
+    int fd;
+
+    if (sock_path == NULL || sock_path[0] == '\0') {
+        return -1;
+    }
+
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return -1;
+    }
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sock_path);
+
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        close(fd);
+        return -1;
+    }
+
+    return fd;
+}
+
+static int greetd_request(int fd, const char *request, char *reply, size_t reply_size)
+{
+    uint32_t len = (uint32_t)strlen(request);
+    uint32_t reply_len = 0;
+
+    if (write_full(fd, &len, sizeof(len)) != 0 ||
+        write_full(fd, request, len) != 0) {
+        return -1;
+    }
+
+    if (read_full(fd, &reply_len, sizeof(reply_len)) != 0) {
+        return -1;
+    }
+
+    if (reply_len >= reply_size || reply_len >= MAX_JSON) {
+        return -1;
+    }
+
+    if (read_full(fd, reply, reply_len) != 0) {
+        return -1;
+    }
+    reply[reply_len] = '\0';
+    return 0;
+}
+
+static int json_has_type(const char *json, const char *type)
+{
+    char pattern[128];
+    snprintf(pattern, sizeof(pattern), "\"type\":\"%s\"", type);
+    if (strstr(json, pattern) != NULL) {
+        return 1;
+    }
+    snprintf(pattern, sizeof(pattern), "\"type\": \"%s\"", type);
+    return strstr(json, pattern) != NULL;
+}
+
+static int json_has_auth_message_type(const char *json, const char *type)
+{
+    char pattern[160];
+    snprintf(pattern, sizeof(pattern), "\"auth_message_type\":\"%s\"", type);
+    if (strstr(json, pattern) != NULL) {
+        return 1;
+    }
+    snprintf(pattern, sizeof(pattern), "\"auth_message_type\": \"%s\"", type);
+    return strstr(json, pattern) != NULL;
+}
+
+static int greetd_cancel(int fd)
+{
+    char reply[MAX_JSON];
+    return greetd_request(fd, "{\"type\":\"cancel_session\"}", reply, sizeof(reply));
+}
+
+static int greetd_start_session(int fd)
+{
+    char reply[MAX_JSON];
+    const char *session = getenv("CARDPUTER_ZERO_GREETD_SESSION");
+    const char *request;
+    char custom_request[MAX_JSON];
+    char escaped_session[2048];
+
+    if (session != NULL && session[0] != '\0') {
+        json_escape(session, escaped_session, sizeof(escaped_session));
+        snprintf(custom_request, sizeof(custom_request),
+                 "{\"type\":\"start_session\","
+                 "\"cmd\":[\"/bin/sh\",\"-lc\",\"%s\"],"
+                 "\"env\":[\"CARDPUTER_ZERO_SESSION=1\","
+                 "\"XDG_CURRENT_DESKTOP=CardputerZero\","
+                 "\"XDG_SESSION_DESKTOP=CardputerZero\"]}",
+                 escaped_session);
+        request = custom_request;
+    } else {
+        request = "{\"type\":\"start_session\","
+                  "\"cmd\":[\"/usr/local/bin/cardputer-zero-session\"],"
+                  "\"env\":[\"CARDPUTER_ZERO_SESSION=1\","
+                  "\"XDG_CURRENT_DESKTOP=CardputerZero\","
+                  "\"XDG_SESSION_DESKTOP=CardputerZero\"]}";
+    }
+
+    if (greetd_request(fd, request, reply, sizeof(reply)) != 0) {
+        return -1;
+    }
+    return json_has_type(reply, "success") ? 0 : -1;
+}
+
+static int greetd_login(const char *username,
+                        const char *password,
+                        char *message,
+                        size_t message_size)
+{
+    int fd = greetd_connect();
+    char request[MAX_JSON];
+    char reply[MAX_JSON];
+    char escaped_user[512];
+    char escaped_password[MAX_PASSWORD * 2];
+    int status = 1;
+
+    if (fd < 0) {
+        snprintf(message, message_size, "GREETD SOCKET FAILED");
+        return 1;
+    }
+
+    json_escape(username, escaped_user, sizeof(escaped_user));
+    snprintf(request, sizeof(request),
+             "{\"type\":\"create_session\",\"username\":\"%s\"}",
+             escaped_user);
+
+    if (greetd_request(fd, request, reply, sizeof(reply)) != 0) {
+        snprintf(message, message_size, "GREETD FAILED");
+        close(fd);
+        return 1;
+    }
+
+    for (;;) {
+        if (json_has_type(reply, "success")) {
+            snprintf(message, message_size, "SESSION STARTING");
+            status = greetd_start_session(fd) == 0 ? 0 : 1;
+            if (status != 0) {
+                snprintf(message, message_size, "SESSION FAILED");
+                greetd_cancel(fd);
+            }
+            break;
+        }
+
+        if (json_has_type(reply, "error")) {
+            snprintf(message, message_size, strstr(reply, "auth_error") != NULL ?
+                     "AUTH FAILED" : "GREETD ERROR");
+            greetd_cancel(fd);
+            break;
+        }
+
+        if (!json_has_type(reply, "auth_message")) {
+            snprintf(message, message_size, "GREETD ERROR");
+            greetd_cancel(fd);
+            break;
+        }
+
+        if (json_has_auth_message_type(reply, "secret") ||
+            json_has_auth_message_type(reply, "visible")) {
+            json_escape(password, escaped_password, sizeof(escaped_password));
+            snprintf(request, sizeof(request),
+                     "{\"type\":\"post_auth_message_response\",\"response\":\"%s\"}",
+                     escaped_password);
+        } else {
+            snprintf(request, sizeof(request),
+                     "{\"type\":\"post_auth_message_response\"}");
+        }
+
+        if (greetd_request(fd, request, reply, sizeof(reply)) != 0) {
+            snprintf(message, message_size, "GREETD FAILED");
+            greetd_cancel(fd);
+            break;
+        }
+    }
+
+    close(fd);
+    return status;
+}
+
 static void apply_pam_environment(pam_handle_t *pamh)
 {
     char **envlist = pam_getenvlist(pamh);
@@ -771,6 +1034,10 @@ static int launch_session(struct zero_pam_session *session)
 
 static int handle_login(struct user_entry *user, const char *password, char *message, size_t message_size)
 {
+    if (greetd_is_active()) {
+        return greetd_login(user->name, password, message, message_size);
+    }
+
     struct zero_pam_session session;
     int pam_status = zero_pam_start_session(user->name, password, &session);
 
@@ -930,6 +1197,11 @@ int main(void)
             mode = UI_STARTING_SESSION;
             error = handle_login(&users[selected], password, message, sizeof(message));
             memset(password, 0, sizeof(password));
+            if (!error && greetd_is_active()) {
+                input_close(&inputs);
+                fb_close(&fb);
+                return 0;
+            }
             mode = UI_LOGIN;
             continue;
         }

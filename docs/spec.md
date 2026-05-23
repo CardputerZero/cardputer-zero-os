@@ -1,4 +1,4 @@
-# cardputer-zero-os Specification
+﻿# cardputer-zero-os Specification
 
 本文档定义当前 `cardputer-zero-os` profile 的规格。
 
@@ -8,7 +8,7 @@ In scope:
 
 - userspace splash,
 - internal-screen GUI greeter,
-- PAM authentication for existing users,
+- greetd/PAM authentication for existing users,
 - real user session launch,
 - Cardputer Zero session script,
 - device permission setup,
@@ -65,10 +65,9 @@ Role:
 - discover existing normal users,
 - render an internal-screen Zero-style GUI login,
 - accept password input,
-- authenticate through PAM,
-- open PAM session,
-- drop to authenticated UID/GID,
-- exec `cardputer-zero-session`.
+- act as a greetd frontend when `GREETD_SOCK` is present,
+- ask greetd to authenticate through PAM,
+- ask greetd to start `cardputer-zero-session`.
 
 Non-role:
 
@@ -77,6 +76,10 @@ Non-role:
 - password database,
 - user manager,
 - HDMI LightDM replacement.
+
+The self-managed `zero-greeter.service` systemd unit is not part of the current
+architecture and must not be installed. `zero-greeter` is a program;
+`zero-greetd.service` is the internal-screen login backend.
 
 ### PAM Service
 
@@ -101,8 +104,9 @@ Path:
 Role:
 
 - define post-login Cardputer Zero session environment,
-- exec configured shell,
-- fallback to login shell when ZeroShell is missing.
+- start the configured session mode,
+- default to the Wayland/labwc session,
+- allow direct-framebuffer ZeroShell only when explicitly configured.
 
 ### zero-helper
 
@@ -156,14 +160,14 @@ Role:
 
 - `DefaultDependencies=no`
 - `After=local-fs.target`
-- `Before=zero-greeter.service`
+- `Before=zero-greetd.service`
 - `WantedBy=multi-user.target`
 
-`zero-greeter.service`:
+`zero-greetd.service`:
 
 - `After=systemd-user-sessions.service zero-splash.service`
 - `Restart=always`
-- logs to journal,
+- starts `/usr/sbin/greetd -c /etc/greetd/cardputer-zero.toml --vt 8`,
 - does not conflict with `lightdm` or `getty@tty1`.
 
 ## User Specification
@@ -186,7 +190,7 @@ The profile must:
 - initialize supplementary groups,
 - drop privileges before launching user session,
 - keep the user desktop out of root,
-- route helper privilege through polkit/pkexec,
+- pass privileged helper requests through polkit/pkexec,
 - restrict helper actions to explicit subcommands.
 
 The profile must not:
@@ -212,13 +216,12 @@ HDMI login remains a base OS/recovery surface.
 
 ## Recovery Specification
 
-Recovery paths:
+Recovery surfaces:
 
 - SSH,
 - HDMI / base OS display manager,
 - `getty@tty1`,
-- disabling `zero-greeter.service`,
-- session fallback to login shell when shell is missing,
+- disabling `zero-greetd.service`,
 - restoring `cmdline.txt.cardputer-zero.bak`.
 
 ## Visual Specification

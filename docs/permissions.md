@@ -50,11 +50,11 @@ Authentication agent:
 /etc/systemd/user/zero-polkit-agent.service
 ```
 
-In the normal Zero path, `cardputer-zero-session` starts the agent directly so
+In the normal Zero session, `cardputer-zero-session` starts the agent directly so
 it registers against the same login session as ZeroShell.
 
 The helper does not accept arbitrary commands, arbitrary systemd service names,
-or arbitrary package-manager arguments. The old `NOPASSWD` sudoers path is not
+or arbitrary package-manager arguments. The old `NOPASSWD` sudoers mechanism is not
 part of the current permission model.
 
 Allowed actions:

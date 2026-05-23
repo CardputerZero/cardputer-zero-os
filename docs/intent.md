@@ -75,7 +75,7 @@ User accounts belong to:
 Raspberry Pi OS / Debian / Raspberry Pi Imager
 ```
 
-`cardputer-zero-os` must not create a fixed `zero` user as the normal path.
+`cardputer-zero-os` must not create a fixed `zero` user in the normal system profile.
 
 The greeter reads existing system users:
 

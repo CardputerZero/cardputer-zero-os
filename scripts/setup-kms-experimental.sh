@@ -1,4 +1,4 @@
-#!/bin/sh
+﻿#!/bin/sh
 set -eu
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -155,7 +155,7 @@ awk '
 
 cat >>"$CONFIG_TMP" <<'EOF'
 # BEGIN cardputer-zero-kms-experimental
-# Experimental route 2: expose the Cardputer Zero internal ST7789 display as DRM/KMS.
+# Experimental KMS setup: expose the Cardputer Zero internal ST7789 display as DRM/KMS.
 # The base overlay still owns keyboard, audio, m5ioe1, sensors, and backlight.
 # This display overlay only disables the fbdev ST7789 node and adds a
 # panel-mipi-dbi-spi node on SPI0 CE0.

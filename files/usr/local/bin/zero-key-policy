@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+import os
+import struct
+import subprocess
+import time
+
+
+EVENT_FORMAT = "llHHI"
+EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
+EV_KEY = 0x01
+KEY_ESC = 1
+KEY_TAB = 15
+LONG_PRESS_SECONDS = float(os.environ.get("ZERO_ESC_LONG_PRESS_SECONDS", "0.8"))
+DEBUG = os.environ.get("ZERO_KEY_POLICY_DEBUG", "0") == "1"
+
+
+def input_devices():
+    explicit = os.environ.get("ZERO_KEYBOARD_EVENT")
+    if explicit:
+        yield explicit
+        return
+
+    base = "/sys/class/input"
+    for name in sorted(os.listdir(base)):
+        if not name.startswith("event"):
+            continue
+        event_name_path = os.path.join(base, name, "device", "name")
+        try:
+            with open(event_name_path, "r", encoding="utf-8") as file:
+                device_name = file.read().strip()
+        except OSError:
+            continue
+        if device_name == "tca8418c":
+            yield "/dev/input/" + name
+
+
+def run_control(action):
+    if not shell_running():
+        log(f"skip action={action} shell=not-running")
+        return
+    log(f"action={action}")
+    subprocess.Popen(
+        ["/usr/local/bin/zero-shell-control", action],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def log(message):
+    if not DEBUG:
+        return
+    with open("/tmp/zero-key-policy.log", "a", encoding="utf-8") as file:
+        file.write(f"{time.strftime('%H:%M:%S')} {message}\n")
+
+
+def shell_running():
+    uid = os.getuid()
+    proc_root = "/proc"
+    for name in os.listdir(proc_root):
+        if not name.isdigit():
+            continue
+        proc_dir = os.path.join(proc_root, name)
+        try:
+            if os.stat(proc_dir).st_uid != uid:
+                continue
+            with open(os.path.join(proc_dir, "cmdline"), "rb") as file:
+                argv = file.read().split(b"\0")
+        except OSError:
+            continue
+        if not argv or not argv[0]:
+            continue
+        executable = os.path.basename(argv[0].decode("utf-8", errors="replace"))
+        if executable == "zero-shell-wayland":
+            return True
+    return False
+
+
+def main():
+    device = next(input_devices(), None)
+    if not device:
+        raise SystemExit("zero-key-policy: tca8418c input device not found")
+    log(f"device={device}")
+
+    esc_down_at = None
+    long_action_sent = False
+
+    with open(device, "rb", buffering=0) as event_file:
+        while True:
+            data = event_file.read(EVENT_SIZE)
+            if len(data) != EVENT_SIZE:
+                time.sleep(0.05)
+                continue
+
+            sec, usec, event_type, code, value = struct.unpack(EVENT_FORMAT, data)
+            if event_type != EV_KEY:
+                continue
+
+            now = sec + usec / 1_000_000.0
+            if code in (KEY_ESC, KEY_TAB) or DEBUG:
+                log(f"key code={code} value={value}")
+
+            if code != KEY_ESC:
+                continue
+
+            if value == 1:
+                esc_down_at = now
+                long_action_sent = False
+            elif value == 2 and esc_down_at is not None:
+                if not long_action_sent and now - esc_down_at >= LONG_PRESS_SECONDS:
+                    run_control("close-active")
+                    long_action_sent = True
+            elif value == 0 and esc_down_at is not None:
+                duration = now - esc_down_at
+                if not long_action_sent:
+                    run_control("close-active" if duration >= LONG_PRESS_SECONDS else "minimize-active")
+                esc_down_at = None
+                long_action_sent = False
+
+
+if __name__ == "__main__":
+    main()

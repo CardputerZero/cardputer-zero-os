@@ -1,4 +1,4 @@
-# ZeroShell Interface
+﻿# ZeroShell Interface
 
 本文档定义 `cardputer-zero-os` 与 `cardputer-zero-shell` 的接口。
 
@@ -14,19 +14,25 @@ cardputer-zero-shell
 
 ## Launch Path
 
-After PAM authentication, `zero-greeter` execs:
+After greetd/PAM authentication, greetd starts:
 
 ```text
 /usr/local/bin/cardputer-zero-session
 ```
 
-The session script then execs:
+The session script then starts the Wayland/labwc session:
 
 ```text
-/opt/cardputer-zero-shell/bin/zero-shell
+/usr/local/bin/cardputer-zero-labwc-session
 ```
 
-The shell path can be overridden in:
+When ZeroShell has a Wayland backend, the labwc session starts:
+
+```text
+/opt/cardputer-zero-shell/bin/zero-shell-wayland
+```
+
+The Wayland shell executable can be overridden in:
 
 ```text
 /etc/cardputer-zero/session.conf
@@ -35,17 +41,17 @@ The shell path can be overridden in:
 using:
 
 ```sh
-CARDPUTER_ZERO_SHELL=/path/to/shell
+CARDPUTER_ZERO_WAYLAND_SHELL=/path/to/zero-shell-wayland
 ```
 
 ## Runtime Identity
 
 The shell must run as the authenticated user.
 
-Expected:
+Expected for the Wayland/labwc shell:
 
 ```text
-pi  1234 /opt/cardputer-zero-shell/bin/zero-shell
+pi  1234 /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
 
 Not acceptable:
@@ -54,30 +60,30 @@ Not acceptable:
 root  1234 /opt/cardputer-zero-shell/bin/zero-shell
 ```
 
-`zero-greeter` must drop privileges before launching the session.
+greetd must launch the session as the authenticated user.
 
 ## Environment
 
 `cardputer-zero-session` exports:
 
 ```text
-XDG_SESSION_TYPE=tty
+XDG_SESSION_TYPE=wayland
 XDG_CURRENT_DESKTOP=CardputerZero
 XDG_SESSION_DESKTOP=CardputerZero
 CARDPUTER_ZERO_SESSION=1
 ```
 
-## Shell Missing Fallback
+## No Framebuffer Fallback
 
-If the configured shell is missing or not executable:
+If the Wayland shell is missing or not executable:
 
 ```text
 /usr/local/bin/cardputer-zero-session
 ```
 
-starts the user's login shell.
-
-This is a recovery path, not the normal desktop contract.
+must not silently start the legacy direct-framebuffer shell or a login shell.
+Recovery uses SSH or HDMI LightDM. This keeps Wayland/labwc failures visible instead
+of entering the wrong graphics model.
 
 ## What OS Provides To Shell
 
@@ -85,7 +91,7 @@ This is a recovery path, not the normal desktop contract.
 
 - authenticated user session,
 - device permissions,
-- APPLaunch path can be populated by shell/app packages,
+- APPLaunch directories can be populated by shell/app packages,
 - `zero-helper`,
 - internal-screen login handoff.
 
@@ -102,4 +108,3 @@ This is a recovery path, not the normal desktop contract.
 - system monitor UI.
 
 Those are shell/application responsibilities.
-

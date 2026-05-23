@@ -49,7 +49,7 @@ Installed files:
 /etc/systemd/user/zero-polkit-agent.service
 ```
 
-The normal Zero path starts the agent directly from `cardputer-zero-session`.
+The normal Zero session starts the agent directly from `cardputer-zero-session`.
 This matters because polkit agents register against a specific login session.
 A global `systemctl --user` service may belong to a different HDMI/desktop user
 manager session and will not authorize the Zero framebuffer session.

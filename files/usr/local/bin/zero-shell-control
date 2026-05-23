@@ -1,0 +1,72 @@
+#!/bin/sh
+set -eu
+
+runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+wayland_display=${WAYLAND_DISPLAY:-wayland-0}
+
+export XDG_RUNTIME_DIR=$runtime_dir
+export WAYLAND_DISPLAY=$wayland_display
+
+command_file=$runtime_dir/zero-shell-command
+
+send_shell_command() {
+  command=$1
+  umask 077
+  printf '%s\n' "$command" >"$command_file.tmp"
+  mv "$command_file.tmp" "$command_file"
+}
+
+focus_shell() {
+  command -v wlrctl >/dev/null 2>&1 || return 0
+  wlrctl toplevel focus app_id:cardputer-zero-shell >/dev/null 2>&1 ||
+    wlrctl toplevel focus title:'Cardputer Zero Shell' >/dev/null 2>&1 ||
+    true
+}
+
+shell_is_active() {
+  command -v wlrctl >/dev/null 2>&1 || return 1
+  wlrctl toplevel find state:active app_id:cardputer-zero-shell >/dev/null 2>&1 ||
+    wlrctl toplevel find state:active title:'Cardputer Zero Shell' >/dev/null 2>&1
+}
+
+case "${1:-}" in
+  tasks)
+    send_shell_command toggle-tasks
+    focus_shell
+    ;;
+  hide-tasks)
+    send_shell_command hide-tasks
+    ;;
+  focus-shell)
+    focus_shell
+    ;;
+  minimize-active)
+    if shell_is_active; then
+      send_shell_command hide-tasks
+      exit 0
+    fi
+    if command -v wlrctl >/dev/null 2>&1; then
+      wlrctl toplevel minimize state:active >/dev/null 2>&1 || true
+    fi
+    focus_shell
+    send_shell_command hide-tasks
+    ;;
+  close-active)
+    if shell_is_active; then
+      send_shell_command hide-tasks
+      exit 0
+    fi
+    if command -v wlrctl >/dev/null 2>&1; then
+      wlrctl toplevel close state:active >/dev/null 2>&1 || true
+    fi
+    sleep 0.15
+    focus_shell
+    send_shell_command hide-tasks
+    ;;
+  *)
+    cat >&2 <<'EOF'
+usage: zero-shell-control tasks|hide-tasks|focus-shell|minimize-active|close-active
+EOF
+    exit 2
+    ;;
+esac

@@ -1,0 +1,24 @@
+[Unit]
+Description=Cardputer Zero Internal greetd
+Documentation=man:greetd(1) man:greetd-ipc(7)
+After=systemd-user-sessions.service zero-splash.service
+Conflicts=getty@tty8.service
+StartLimitBurst=5
+StartLimitIntervalSec=30
+
+[Service]
+Type=simple
+# Xwayland refuses to start if LightDM/labwc left this shared directory as
+# lightdm:lightdm 0755. Keep it in the standard global X11 socket state before
+# the internal labwc session can be launched through greetd.
+ExecStartPre=/usr/bin/install -d -m 1777 -o root -g root /tmp/.X11-unix
+ExecStart=/usr/sbin/greetd -c /etc/greetd/cardputer-zero.toml --vt 8
+IgnoreSIGPIPE=no
+SendSIGHUP=yes
+TimeoutStopSec=30s
+KeyringMode=shared
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

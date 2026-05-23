@@ -45,27 +45,37 @@ install_tree_files() {
 
 install_file "$REPO_DIR/files/usr/local/bin/zero-splash" /usr/local/bin/zero-splash 0755
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-lightdm-labwc" /usr/local/bin/cardputer-zero-lightdm-labwc 0755
+install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-labwc-session" /usr/local/bin/cardputer-zero-labwc-session 0755
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-session" /usr/local/bin/cardputer-zero-session 0755
+install_file "$REPO_DIR/files/usr/local/bin/zero-key-policy" /usr/local/bin/zero-key-policy 0755
+install_file "$REPO_DIR/files/usr/local/bin/zero-shell-control" /usr/local/bin/zero-shell-control 0755
 install_file "$REPO_DIR/files/usr/local/sbin/zero-helper" /usr/local/sbin/zero-helper 0755
 
 install_file "$REPO_DIR/files/etc/pam.d/zero-greeter" /etc/pam.d/zero-greeter 0644
 install_file "$REPO_DIR/files/usr/share/xgreeters/cardputer-zero-pi-greeter-labwc.desktop" /usr/share/xgreeters/cardputer-zero-pi-greeter-labwc.desktop 0644
 install_file "$REPO_DIR/files/etc/systemd/system/zero-splash.service" /etc/systemd/system/zero-splash.service 0644
-install_file "$REPO_DIR/files/etc/systemd/system/zero-greeter.service" /etc/systemd/system/zero-greeter.service 0644
+install_file "$REPO_DIR/files/etc/systemd/system/zero-greetd.service" /etc/systemd/system/zero-greetd.service 0644
 install_file "$REPO_DIR/files/etc/systemd/user/zero-polkit-agent.service" /etc/systemd/user/zero-polkit-agent.service 0644
+install_file "$REPO_DIR/files/etc/tmpfiles.d/cardputer-zero-xwayland.conf" /etc/tmpfiles.d/cardputer-zero-xwayland.conf 0644
 install_file "$REPO_DIR/files/etc/udev/rules.d/99-cardputer-zero.rules" /etc/udev/rules.d/99-cardputer-zero.rules 0644
 install_file "$REPO_DIR/files/usr/share/polkit-1/actions/org.cardputerzero.zero-helper.policy" /usr/share/polkit-1/actions/org.cardputerzero.zero-helper.policy 0644
 
 install_tree_files "$REPO_DIR/files/etc/cardputer-zero" /etc/cardputer-zero 0644
+install_tree_files "$REPO_DIR/files/etc/greetd" /etc/greetd 0644
+install_tree_files "$REPO_DIR/files/etc/xdg" /etc/xdg 0644
 install_tree_files "$REPO_DIR/files/usr/share/cardputer-zero" /usr/share/cardputer-zero 0644
 
 need_live_command pkexec "polkitd/policykit-1"
+need_live_command greetd "greetd"
+need_live_command wlrctl "wlrctl"
 "$REPO_DIR/scripts/setup-greeter.sh" "$ROOT"
 "$REPO_DIR/scripts/setup-polkit-agent.sh" "$ROOT"
 "$REPO_DIR/scripts/setup-splash.sh" "$ROOT"
+"$REPO_DIR/scripts/setup-cursor-theme.sh" "$ROOT"
 "$REPO_DIR/scripts/setup-session.sh" "$ROOT"
 "$REPO_DIR/scripts/setup-udev.sh" "$ROOT"
 "$REPO_DIR/scripts/setup-lightdm-policy.sh" "$ROOT"
+"$REPO_DIR/scripts/setup-greetd.sh" "$ROOT"
 "$REPO_DIR/scripts/setup-quiet-boot.sh" "$ROOT"
 
 # Older cardputer-zero-os builds installed NOPASSWD sudoers entries for
@@ -76,10 +86,16 @@ if [ -z "$ROOT" ]; then
   if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload
     systemctl --global disable zero-polkit-agent.service >/dev/null 2>&1 || true
+    systemctl disable --now zero-greeter.service >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/zero-greeter.service
+    rm -f /etc/systemd/system/multi-user.target.wants/zero-greeter.service
+    systemctl daemon-reload
     systemctl enable zero-splash.service
-    systemctl enable zero-greeter.service
+    systemctl enable zero-greetd.service
   fi
 else
+  rm -f "$ROOT/etc/systemd/system/zero-greeter.service"
+  rm -f "$ROOT/etc/systemd/system/multi-user.target.wants/zero-greeter.service"
   rm -f "$ROOT/etc/systemd/user/default.target.wants/zero-polkit-agent.service"
 fi
 
