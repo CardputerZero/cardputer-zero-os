@@ -12,6 +12,7 @@ In scope:
 - greetd/PAM authentication for existing users,
 - real logind user session launch,
 - labwc session configuration,
+- internal keyboard XKB profile,
 - global Zero keyboard policy,
 - device permission setup,
 - restricted privileged helper,
@@ -152,6 +153,31 @@ Role:
 - reactivate that session through logind if the visible VT slips away,
 - call `zero-shell-control` as the authenticated user, not as root.
 
+### Cardputer XKB Profile
+
+Paths:
+
+```text
+/usr/share/X11/xkb/rules/cardputerzero
+/usr/share/X11/xkb/keycodes/cardputerzero
+/usr/share/X11/xkb/symbols/cardputerzero
+```
+
+Role:
+
+- provide the global Wayland keyboard profile for the internal tca8418c
+  keyboard,
+- preserve the legacy `tca8418_keypad_m5stack_keymap.map` Sym-layer character
+  mapping in XKB form,
+- make `Sym` combinations work for every internal Wayland client.
+
+Non-role:
+
+- per-application key handling,
+- shell-specific terminal input,
+- Linux console keymap loading,
+- HDMI keyboard policy.
+
 ### zero-helper
 
 Path:
@@ -241,6 +267,9 @@ Required runtime environment:
 WLR_DRM_DEVICES=/dev/dri/cardputer-zero-internal
 WLR_BACKENDS=drm,libinput
 WLR_RENDERER=pixman
+XKB_DEFAULT_RULES=cardputerzero
+XKB_DEFAULT_MODEL=pc105
+XKB_DEFAULT_LAYOUT=cardputerzero
 ```
 
 HDMI remains separate and available for Pi OS login/recovery.

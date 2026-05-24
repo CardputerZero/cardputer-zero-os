@@ -66,6 +66,7 @@ install_tree_files "$REPO_DIR/files/etc/cardputer-zero" /etc/cardputer-zero 0644
 install_tree_files "$REPO_DIR/files/etc/greetd" /etc/greetd 0644
 install_tree_files "$REPO_DIR/files/etc/xdg" /etc/xdg 0644
 install_tree_files "$REPO_DIR/files/usr/share/cardputer-zero" /usr/share/cardputer-zero 0644
+install_tree_files "$REPO_DIR/files/usr/share/X11" /usr/share/X11 0644
 
 need_live_command pkexec "polkitd/policykit-1"
 need_live_command greetd "greetd"

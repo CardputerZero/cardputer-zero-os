@@ -1,0 +1,18 @@
+// Cardputer Zero XKB keycodes for the internal tca8418c keyboard.
+//
+// The base evdev table uses XKB keycodes 203-207 for fake modifier key names:
+// <LVL5>, <ALT>, <META>, <SUPR>, and <HYPR>. Those XKB keycodes correspond to
+// Linux event codes 195-199, which the Cardputer tca8418 driver uses for part
+// of the Sym layer. The Zero session renames them to ordinary <I203>-<I207>
+// keys so printable Sym characters do not also behave like Alt/Super/Level5
+// modifiers.
+
+default xkb_keycodes "evdev" {
+    include "evdev(evdev)"
+
+    <I203> = 203; // Linux event code 195
+    <I204> = 204; // Linux event code 196
+    <I205> = 205; // Linux event code 197
+    <I206> = 206; // Linux event code 198
+    <I207> = 207; // Linux event code 199
+};

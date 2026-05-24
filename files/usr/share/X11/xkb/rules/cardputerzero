@@ -1,0 +1,29 @@
+// Cardputer Zero XKB rules for the internal Wayland/labwc session.
+//
+// This profile inherits the normal evdev keycode table and the normal US
+// layout, then adds names and symbols for the tca8418c Sym layer.
+
+! model = keycodes
+  * = cardputerzero
+
+! layout[1] = keycodes
+  * = +aliases(qwerty)
+
+! layout = keycodes
+  * = +aliases(qwerty)
+
+! model = types
+  * = complete
+
+! model = compat
+  * = complete
+
+! model layout variant = symbols
+  * cardputerzero basic = pc+us(basic)+inet(evdev)+cardputerzero(sym)
+
+! model layout = symbols
+  * cardputerzero = pc+us(basic)+inet(evdev)+cardputerzero(sym)
+  * * = pc+%l(%v)+inet(evdev)
+
+! model = geometry
+  * = pc(pc104)

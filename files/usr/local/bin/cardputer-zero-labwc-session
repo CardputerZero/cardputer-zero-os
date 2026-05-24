@@ -25,12 +25,22 @@ export CARDPUTER_ZERO_LABWC_SESSION=1
 : "${WLR_RENDERER:=pixman}"
 : "${XCURSOR_THEME:=cardputer-zero-empty}"
 : "${XCURSOR_SIZE:=1}"
+: "${XKB_DEFAULT_RULES:=cardputerzero}"
+: "${XKB_DEFAULT_MODEL:=pc105}"
+: "${XKB_DEFAULT_LAYOUT:=cardputerzero}"
+: "${XKB_DEFAULT_VARIANT:=}"
+: "${XKB_DEFAULT_OPTIONS:=}"
 
 export WLR_BACKENDS
 export WLR_DRM_DEVICES
 export WLR_RENDERER
 export XCURSOR_THEME
 export XCURSOR_SIZE
+export XKB_DEFAULT_RULES
+export XKB_DEFAULT_MODEL
+export XKB_DEFAULT_LAYOUT
+export XKB_DEFAULT_VARIANT
+export XKB_DEFAULT_OPTIONS
 
 if [ ! -x "$LABWC_BIN" ]; then
   printf 'cardputer-zero-labwc-session: labwc not found at %s\n' "$LABWC_BIN" >&2

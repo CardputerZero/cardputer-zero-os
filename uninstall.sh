@@ -44,6 +44,9 @@ rm -f /usr/local/bin/cardputer-zero-session
 rm -f /usr/local/bin/zero-key-policy
 rm -f /usr/local/sbin/zero-helper
 rm -f /usr/local/sbin/zero-hdmi-lightdm-policy
+rm -f /usr/share/X11/xkb/keycodes/cardputerzero
+rm -f /usr/share/X11/xkb/symbols/cardputerzero
+rm -f /usr/share/X11/xkb/rules/cardputerzero
 
 rm -rf /etc/cardputer-zero
 rm -f /etc/greetd/cardputer-zero.toml

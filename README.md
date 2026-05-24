@@ -330,5 +330,6 @@ cardputer-zero-shell
 - [docs/recovery.md](docs/recovery.md)
 - [docs/install.md](docs/install.md)
 - [docs/kms-labwc.md](docs/kms-labwc.md)
+- [docs/input.md](docs/input.md)
 - [docs/zero-shell-interface.md](docs/zero-shell-interface.md)
 - [docs/spec.md](docs/spec.md)

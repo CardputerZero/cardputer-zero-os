@@ -1,0 +1,61 @@
+// Cardputer Zero XKB symbols for the internal tca8418c keyboard.
+//
+// This is the Wayland/XKB equivalent of the legacy
+// tca8418_keypad_m5stack_keymap.map console keymap. The kernel driver still
+// owns layer selection: pressing Sym changes the driver's output keycode.
+// XKB then maps those Sym-layer keycodes to printable characters for all
+// Wayland clients in the Zero session.
+
+default partial alphanumeric_keys
+xkb_symbols "basic" {
+    include "us(basic)"
+    include "cardputerzero(sym)"
+
+    name[Group1] = "Cardputer Zero";
+};
+
+partial alphanumeric_keys
+xkb_symbols "sym" {
+
+    // Sym row 4.
+    key <FK13> { [ exclam ] };       // Linux 183, 0xb7
+
+    // Sym row 0.
+    key <FK14> { [ at ] };           // Linux 184, 0xb8
+    key <FK15> { [ numbersign ] };   // Linux 185, 0xb9
+    key <FK16> { [ dollar ] };       // Linux 186, 0xba
+    key <FK17> { [ percent ] };      // Linux 187, 0xbb
+    key <FK18> { [ asciicircum ] };  // Linux 188, 0xbc
+    key <FK19> { [ ampersand ] };    // Linux 189, 0xbd
+    key <FK20> { [ asterisk ] };     // Linux 190, 0xbe
+    key <FK21> { [ parenleft ] };    // Linux 191, 0xbf
+    key <FK22> { [ parenright ] };   // Linux 192, 0xc0
+
+    // Sym row 1.
+    key <FK23> { [ asciitilde ] };   // Linux 193, 0xc1
+    key <FK24> { [ grave ] };        // Linux 194, 0xc2
+    key <I203> { [ plus ] };         // Linux 195, 0xc3
+    key <I204> { [ minus ] };        // Linux 196, 0xc4
+    key <I205> { [ slash ] };        // Linux 197, 0xc5
+    key <I206> { [ backslash ] };    // Linux 198, 0xc6
+    key <I207> { [ braceleft ] };    // Linux 199, 0xc7
+    key <I208> { [ braceright ] };   // Linux 200, 0xc8
+    key <I209> { [ bracketleft ] };  // Linux 201, 0xc9
+    key <I210> { [ bracketright ] }; // Linux 202, 0xca
+
+    // Sym row 2.
+    key <I239> { [ comma ] };        // Linux 231, 0xe7
+    key <I240> { [ period ] };       // Linux 232, 0xe8
+    key <I241> { [ bar ] };          // Linux 233, 0xe9
+    key <I217> { [ equal ] };        // Linux 209, 0xd1
+    key <I218> { [ colon ] };        // Linux 210, 0xd2
+    key <I219> { [ semicolon ] };    // Linux 211, 0xd3
+    key <I220> { [ underscore ] };   // Linux 212, 0xd4
+    key <I221> { [ question ] };     // Linux 213, 0xd5
+
+    // Sym row 3.
+    key <I222> { [ less ] };         // Linux 214, 0xd6
+    key <I223> { [ greater ] };      // Linux 215, 0xd7
+    key <I224> { [ apostrophe ] };   // Linux 216, 0xd8
+    key <I225> { [ quotedbl ] };     // Linux 217, 0xd9
+};
