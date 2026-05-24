@@ -59,17 +59,20 @@ install_file "$REPO_DIR/files/etc/systemd/system/zero-hdmi-lightdm-policy.servic
 install_file "$REPO_DIR/files/etc/systemd/system/lightdm.service.d/10-cardputer-zero-hdmi.conf" /etc/systemd/system/lightdm.service.d/10-cardputer-zero-hdmi.conf 0644
 install_file "$REPO_DIR/files/etc/systemd/user/zero-polkit-agent.service" /etc/systemd/user/zero-polkit-agent.service 0644
 install_file "$REPO_DIR/files/etc/tmpfiles.d/cardputer-zero-xwayland.conf" /etc/tmpfiles.d/cardputer-zero-xwayland.conf 0644
+install_file "$REPO_DIR/files/etc/pam.d/cardputer-zero-login" /etc/pam.d/cardputer-zero-login 0644
+install_file "$REPO_DIR/files/etc/pam.d/cardputer-zero-session" /etc/pam.d/cardputer-zero-session 0644
+install_file "$REPO_DIR/files/etc/pam.d/cardputer-zero-greeter" /etc/pam.d/cardputer-zero-greeter 0644
+install_file "$REPO_DIR/files/etc/security/cardputer-zero-greeter.env" /etc/security/cardputer-zero-greeter.env 0644
+install_file "$REPO_DIR/files/etc/security/cardputer-zero-session.env" /etc/security/cardputer-zero-session.env 0644
 install_file "$REPO_DIR/files/etc/udev/rules.d/99-cardputer-zero.rules" /etc/udev/rules.d/99-cardputer-zero.rules 0644
 install_file "$REPO_DIR/files/usr/share/polkit-1/actions/org.cardputerzero.zero-helper.policy" /usr/share/polkit-1/actions/org.cardputerzero.zero-helper.policy 0644
 
 install_tree_files "$REPO_DIR/files/etc/cardputer-zero" /etc/cardputer-zero 0644
-install_tree_files "$REPO_DIR/files/etc/greetd" /etc/greetd 0644
 install_tree_files "$REPO_DIR/files/etc/xdg" /etc/xdg 0644
 install_tree_files "$REPO_DIR/files/usr/share/cardputer-zero" /usr/share/cardputer-zero 0644
 install_tree_files "$REPO_DIR/files/usr/share/X11" /usr/share/X11 0644
 
 need_live_command pkexec "polkitd/policykit-1"
-need_live_command greetd "greetd"
 need_live_command wlrctl "wlrctl"
 need_live_command dtc "device-tree-compiler"
 if [ -z "$ROOT" ]; then
@@ -88,13 +91,17 @@ sh "$REPO_DIR/scripts/setup-quiet-boot.sh" "$ROOT"
 # polkit-backed model intentionally removes that bypass.
 rm -f "$ROOT/etc/sudoers.d/cardputer-zero"
 
-# Remove old direct greeter leftovers. The only login UI path is now the
-# greetd-managed Wayland greeter.
+# Remove old greeter leftovers. The only internal login UI path is now the
+# DRM/KMS Wayland greeter service.
 rm -f "$ROOT/usr/local/bin/zero-greeter"
 rm -f "$ROOT/usr/local/bin/zero-greeter.pre-greetd"
 rm -f "$ROOT/etc/pam.d/zero-greeter"
 rm -f "$ROOT/etc/systemd/system/zero-greeter.service"
 rm -f "$ROOT/etc/systemd/system/multi-user.target.wants/zero-greeter.service"
+rm -f "$ROOT/etc/greetd/cardputer-zero.toml"
+rm -f "$ROOT/etc/pam.d/cardputer-zero-greetd"
+rm -f "$ROOT/etc/pam.d/cardputer-zero-greetd-greeter"
+rm -f "$ROOT/etc/security/cardputer-zero-greetd.env"
 
 if [ -z "$ROOT" ]; then
   if command -v systemctl >/dev/null 2>&1; then

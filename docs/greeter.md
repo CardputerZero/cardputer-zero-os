@@ -2,18 +2,19 @@
 
 `zero-greeter-wayland` is the internal-screen login UI.
 
-It is a greetd frontend, not a launcher and not a standalone display manager.
-Its job ends when greetd starts the authenticated user session.
+It is not a launcher and not a standalone display manager. Its job ends when the
+authenticated user session has been started.
 
 ## Runtime Chain
 
 ```text
 zero-greetd.service
-  -> greetd --vt 8
-  -> cardputer-zero-greeter-session as _greetd
+  -> systemd/PAM opens a _greetd greeter session on seat-cardputer-zero
+  -> cardputer-zero-greeter-session
   -> labwc on /dev/dri/cardputer-zero-internal
   -> zero-greeter-wayland
-  -> greetd PAM authentication
+  -> zero-greeter-auth
+  -> PAM authentication
   -> cardputer-zero-session as authenticated user
 ```
 
@@ -31,9 +32,9 @@ It does not create users.
 
 ## Authentication
 
-The greeter communicates with greetd through `GREETD_SOCK`.
+The greeter communicates with `/usr/local/libexec/cardputer-zero/zero-greeter-auth`.
 
-greetd owns:
+The helper owns:
 
 - PAM authentication,
 - PAM account checks,
@@ -41,7 +42,11 @@ greetd owns:
 - logind session activation,
 - starting `/usr/local/bin/cardputer-zero-session`.
 
-The greeter does not store passwords and does not implement account policy.
+The helper is installed as `root:_greetd` with mode `4750`. The greeter can
+execute it, but ordinary users cannot. It does not accept arbitrary commands.
+
+The greeter does not store passwords, does not read `/etc/shadow`, and does not
+implement account policy.
 
 ## Rendering
 

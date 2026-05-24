@@ -14,10 +14,9 @@
 #include <pwd.h>
 #include <string>
 #include <sys/mman.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
-#include <sys/un.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
 #include <wayland-client.h>
@@ -33,7 +32,6 @@ constexpr int kWidth = 320;
 constexpr int kHeight = 170;
 constexpr int kStride = kWidth * 4;
 constexpr int kBufferSize = kStride * kHeight;
-constexpr size_t kMaxJson = 8192;
 
 struct Color {
     uint8_t r;
@@ -241,208 +239,141 @@ int create_anonymous_file(size_t size)
     return fd;
 }
 
-bool write_full(int fd, const void *buf, size_t len)
+bool write_all(int fd, const std::string &data)
 {
-    const char *cursor = static_cast<const char *>(buf);
-    while (len > 0) {
-        ssize_t n = write(fd, cursor, len);
-        if (n < 0) {
+    const char *cursor = data.data();
+    size_t remaining = data.size();
+    while (remaining > 0) {
+        ssize_t written = write(fd, cursor, remaining);
+        if (written < 0) {
             if (errno == EINTR) {
                 continue;
             }
             return false;
         }
-        cursor += n;
-        len -= static_cast<size_t>(n);
+        cursor += written;
+        remaining -= static_cast<size_t>(written);
     }
     return true;
 }
 
-bool read_full(int fd, void *buf, size_t len)
+std::string trim_line(std::string text)
 {
-    char *cursor = static_cast<char *>(buf);
-    while (len > 0) {
-        ssize_t n = read(fd, cursor, len);
-        if (n < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return false;
+    while (!text.empty()) {
+        char ch = text.back();
+        if (ch != '\n' && ch != '\r' && ch != ' ' && ch != '\t') {
+            break;
         }
-        if (n == 0) {
-            return false;
+        text.pop_back();
+    }
+    size_t first = 0;
+    while (first < text.size()) {
+        char ch = text[first];
+        if (ch != '\n' && ch != '\r' && ch != ' ' && ch != '\t') {
+            break;
         }
-        cursor += n;
-        len -= static_cast<size_t>(n);
+        ++first;
     }
-    return true;
-}
-
-std::string json_escape(const std::string &input)
-{
-    std::string out;
-    out.reserve(input.size());
-    for (unsigned char ch : input) {
-        if (ch == '"' || ch == '\\') {
-            out.push_back('\\');
-            out.push_back(static_cast<char>(ch));
-        } else if (ch == '\n') {
-            out += "\\n";
-        } else if (ch == '\r') {
-            out += "\\r";
-        } else if (ch == '\t') {
-            out += "\\t";
-        } else if (ch >= 0x20 && ch < 0x80) {
-            out.push_back(static_cast<char>(ch));
-        }
+    if (first > 0) {
+        text.erase(0, first);
     }
-    return out;
+    return text;
 }
 
-bool json_has_type(const std::string &json, const char *type)
+bool authenticate_and_start_session(const std::string &username, const std::string &password, std::string &message)
 {
-    std::string compact = std::string("\"type\":\"") + type + "\"";
-    std::string spaced = std::string("\"type\": \"") + type + "\"";
-    return json.find(compact) != std::string::npos || json.find(spaced) != std::string::npos;
-}
-
-bool json_has_auth_message_type(const std::string &json, const char *type)
-{
-    std::string compact = std::string("\"auth_message_type\":\"") + type + "\"";
-    std::string spaced = std::string("\"auth_message_type\": \"") + type + "\"";
-    return json.find(compact) != std::string::npos || json.find(spaced) != std::string::npos;
-}
-
-class GreetdClient {
-public:
-    bool connect_socket();
-    bool login(const std::string &username, const std::string &password, std::string &message);
-
-private:
-    bool request(const std::string &request_json, std::string &reply_json);
-    bool cancel();
-    bool start_session();
-
-    int fd_ = -1;
-};
-
-bool GreetdClient::connect_socket()
-{
-    const char *sock_path = std::getenv("GREETD_SOCK");
-    if (sock_path == nullptr || sock_path[0] == '\0') {
+    int input_pipe[2] = {-1, -1};
+    int output_pipe[2] = {-1, -1};
+    if (pipe(input_pipe) != 0 || pipe(output_pipe) != 0) {
+        if (input_pipe[0] >= 0) close(input_pipe[0]);
+        if (input_pipe[1] >= 0) close(input_pipe[1]);
+        if (output_pipe[0] >= 0) close(output_pipe[0]);
+        if (output_pipe[1] >= 0) close(output_pipe[1]);
+        message = "AUTH HELPER FAILED";
         return false;
     }
 
-    fd_ = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (fd_ < 0) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(input_pipe[0]);
+        close(input_pipe[1]);
+        close(output_pipe[0]);
+        close(output_pipe[1]);
+        message = "AUTH HELPER FAILED";
         return false;
     }
-
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    std::snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sock_path);
-    if (::connect(fd_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
-        close(fd_);
-        fd_ = -1;
-        return false;
-    }
-    return true;
-}
-
-bool GreetdClient::request(const std::string &request_json, std::string &reply_json)
-{
-    uint32_t len = static_cast<uint32_t>(request_json.size());
-    uint32_t reply_len = 0;
-    if (!write_full(fd_, &len, sizeof(len)) ||
-        !write_full(fd_, request_json.data(), request_json.size()) ||
-        !read_full(fd_, &reply_len, sizeof(reply_len))) {
-        return false;
-    }
-    if (reply_len >= kMaxJson) {
-        return false;
-    }
-    reply_json.assign(reply_len, '\0');
-    return read_full(fd_, reply_json.data(), reply_len);
-}
-
-bool GreetdClient::cancel()
-{
-    std::string reply;
-    return request("{\"type\":\"cancel_session\"}", reply);
-}
-
-bool GreetdClient::start_session()
-{
-    std::string reply;
-    const char *session = std::getenv("CARDPUTER_ZERO_GREETD_SESSION");
-    std::string command = session != nullptr && session[0] != '\0'
-        ? std::string("{\"type\":\"start_session\",\"cmd\":[\"/bin/sh\",\"-lc\",\"") +
-              json_escape(session) + "\"],\"env\":[\"CARDPUTER_ZERO_SESSION=1\","
-              "\"XDG_CURRENT_DESKTOP=CardputerZero\",\"XDG_SESSION_DESKTOP=CardputerZero\","
-              "\"XDG_SESSION_TYPE=wayland\",\"XDG_VTNR=8\"]}"
-        : "{\"type\":\"start_session\",\"cmd\":[\"/usr/local/bin/cardputer-zero-session\"],"
-          "\"env\":[\"CARDPUTER_ZERO_SESSION=1\",\"XDG_CURRENT_DESKTOP=CardputerZero\","
-          "\"XDG_SESSION_DESKTOP=CardputerZero\",\"XDG_SESSION_TYPE=wayland\",\"XDG_VTNR=8\"]}";
-
-    return request(command, reply) && json_has_type(reply, "success");
-}
-
-bool GreetdClient::login(const std::string &username, const std::string &password, std::string &message)
-{
-    if (!connect_socket()) {
-        message = "GREETD SOCKET FAILED";
-        return false;
+    if (pid == 0) {
+        dup2(input_pipe[0], STDIN_FILENO);
+        dup2(output_pipe[1], STDOUT_FILENO);
+        close(input_pipe[0]);
+        close(input_pipe[1]);
+        close(output_pipe[0]);
+        close(output_pipe[1]);
+        execl("/usr/local/libexec/cardputer-zero/zero-greeter-auth",
+              "zero-greeter-auth", static_cast<char *>(nullptr));
+        _exit(127);
     }
 
-    std::string reply;
-    std::string create = "{\"type\":\"create_session\",\"username\":\"" + json_escape(username) + "\"}";
-    if (!request(create, reply)) {
-        message = "GREETD FAILED";
-        close(fd_);
-        return false;
-    }
+    close(input_pipe[0]);
+    close(output_pipe[1]);
 
+    std::string request = username + "\n" + password + "\n";
+    bool sent = write_all(input_pipe[1], request);
+    close(input_pipe[1]);
+
+    std::string response;
+    char buffer[128];
     for (;;) {
-        if (json_has_type(reply, "success")) {
-            message = "SESSION STARTING";
-            bool ok = start_session();
-            if (!ok) {
-                message = "SESSION FAILED";
-                cancel();
+        ssize_t count = read(output_pipe[0], buffer, sizeof(buffer));
+        if (count < 0) {
+            if (errno == EINTR) {
+                continue;
             }
-            close(fd_);
-            return ok;
+            break;
         }
+        if (count == 0) {
+            break;
+        }
+        response.append(buffer, buffer + count);
+        if (response.size() > 512) {
+            response.resize(512);
+            break;
+        }
+    }
+    close(output_pipe[0]);
 
-        if (json_has_type(reply, "error")) {
-            message = reply.find("auth_error") != std::string::npos ? "AUTH FAILED" : "GREETD ERROR";
-            cancel();
-            close(fd_);
-            return false;
-        }
-
-        if (!json_has_type(reply, "auth_message")) {
-            message = "GREETD ERROR";
-            cancel();
-            close(fd_);
-            return false;
-        }
-
-        std::string post;
-        if (json_has_auth_message_type(reply, "secret") ||
-            json_has_auth_message_type(reply, "visible")) {
-            post = "{\"type\":\"post_auth_message_response\",\"response\":\"" +
-                   json_escape(password) + "\"}";
-        } else {
-            post = "{\"type\":\"post_auth_message_response\"}";
-        }
-        if (!request(post, reply)) {
-            message = "GREETD FAILED";
-            cancel();
-            close(fd_);
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno != EINTR) {
+            message = "AUTH HELPER FAILED";
             return false;
         }
     }
+
+    response = trim_line(response);
+    if (!sent || !WIFEXITED(status)) {
+        message = "AUTH HELPER FAILED";
+        return false;
+    }
+    if (WEXITSTATUS(status) == 0) {
+        message = "SESSION STARTING";
+        return true;
+    }
+    if (response == "AUTH FAILED" || response == "PAM ERROR" || response == "SESSION FAILED" ||
+        response == "USER INVALID") {
+        message = response;
+        return false;
+    }
+    if (WEXITSTATUS(status) == 10) {
+        message = "AUTH FAILED";
+        return false;
+    }
+    if (WEXITSTATUS(status) == 20) {
+        message = "SESSION FAILED";
+        return false;
+    }
+    message = "AUTH HELPER FAILED";
+    return false;
 }
 
 class GreeterWindow {
@@ -697,11 +628,6 @@ GreeterWindow::Buffer *GreeterWindow::next_buffer()
 
 bool GreeterWindow::init()
 {
-    if (std::getenv("GREETD_SOCK") == nullptr) {
-        std::cerr << "zero-greeter-wayland: GREETD_SOCK is required\n";
-        return false;
-    }
-
     reload_users();
     display_ = wl_display_connect(nullptr);
     if (!display_) {
@@ -772,9 +698,9 @@ void GreeterWindow::attempt_login()
     render();
     wl_display_flush(display_);
 
-    GreetdClient client;
     std::string login_message;
-    bool ok = client.login(users_[selected_].name, password_, login_message);
+    UserEntry user = users_[selected_];
+    bool ok = authenticate_and_start_session(user.name, password_, login_message);
     std::fill(password_.begin(), password_.end(), '\0');
     password_.clear();
     message_ = login_message;

@@ -7,7 +7,7 @@ It owns:
 
 - internal-screen display setup,
 - login UI,
-- PAM-backed authentication through greetd,
+- PAM-backed authentication for existing Linux users,
 - real user session handoff,
 - device permissions,
 - restricted privileged helper policy,
@@ -42,13 +42,15 @@ Zero user.
 
 ## Authentication
 
-Authentication belongs to greetd and Linux PAM:
+Authentication belongs to Linux PAM. The visible greeter is not root; it calls a
+restricted root helper that owns the authentication and session-creation
+boundary:
 
 ```text
 zero-greeter-wayland
-  -> greetd IPC
-  -> PAM
-  -> logind user session
+  -> zero-greeter-auth
+  -> PAM service cardputer-zero-login
+  -> systemd/logind user session
 ```
 
 The greeter does not store passwords.

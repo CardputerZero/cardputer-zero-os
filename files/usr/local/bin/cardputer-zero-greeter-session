@@ -5,7 +5,7 @@ CONFIG=/etc/cardputer-zero/session.conf
 LABWC_BIN=${CARDPUTER_ZERO_LABWC_BIN:-/usr/bin/labwc}
 LABWC_CONFIG_DIR=${CARDPUTER_ZERO_GREETER_LABWC_CONFIG_DIR:-/etc/xdg/cardputer-zero-greeter-labwc}
 GREETER_BIN=${CARDPUTER_ZERO_GREETER:-/usr/local/bin/zero-greeter-wayland}
-LOG_FILE=${CARDPUTER_ZERO_GREETER_LOG:-/tmp/cardputer-zero-greeter-session.log}
+LOG_FILE=${CARDPUTER_ZERO_GREETER_LOG:-/run/cardputer-zero/zero-greeter-session.log}
 
 if [ -r "$CONFIG" ]; then
   # shellcheck disable=SC1090
@@ -17,6 +17,7 @@ LABWC_CONFIG_DIR=${CARDPUTER_ZERO_GREETER_LABWC_CONFIG_DIR:-$LABWC_CONFIG_DIR}
 GREETER_BIN=${CARDPUTER_ZERO_GREETER:-$GREETER_BIN}
 
 export XDG_SESSION_TYPE=wayland
+export XDG_SEAT=${XDG_SEAT:-seat-cardputer-zero}
 export XDG_CURRENT_DESKTOP=CardputerZero
 export XDG_SESSION_DESKTOP=CardputerZero
 export DESKTOP_SESSION=cardputer-zero-greeter
@@ -27,6 +28,7 @@ export CARDPUTER_ZERO_GREETER_SESSION=1
 : "${WLR_RENDERER:=pixman}"
 : "${XCURSOR_THEME:=cardputer-zero-empty}"
 : "${XCURSOR_SIZE:=1}"
+: "${XDG_RUNTIME_DIR:=/run/cardputer-zero-greeter}"
 : "${WAYLAND_DISPLAY:=wayland-0}"
 : "${XKB_DEFAULT_RULES:=cardputerzero}"
 : "${XKB_DEFAULT_MODEL:=pc105}"
@@ -46,11 +48,13 @@ export XKB_DEFAULT_LAYOUT
 export XKB_DEFAULT_VARIANT
 export XKB_DEFAULT_OPTIONS
 
-if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
-  XDG_RUNTIME_DIR="/tmp/cardputer-zero-greeter-runtime-$(id -u)"
-  export XDG_RUNTIME_DIR
+export XDG_RUNTIME_DIR
+if [ ! -d /run/cardputer-zero ]; then
+  install -d -m 0775 /run/cardputer-zero
 fi
-install -d -m 0700 "$XDG_RUNTIME_DIR"
+if [ ! -d "$XDG_RUNTIME_DIR" ]; then
+  install -d -m 0700 "$XDG_RUNTIME_DIR"
+fi
 rm -f "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY.lock"
 
 if [ ! -x "$LABWC_BIN" ]; then
@@ -78,8 +82,7 @@ sleep 0.2
   echo
   echo "=== cardputer-zero-greeter-session $(date -Is 2>/dev/null || date) ==="
   echo "uid=$(id -u) user=$(id -un 2>/dev/null || true)"
-  echo "GREETD_SOCK=${GREETD_SOCK:-}"
-  echo "XDG_SESSION_ID=${XDG_SESSION_ID:-} XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+  echo "XDG_SESSION_ID=${XDG_SESSION_ID:-} XDG_SEAT=${XDG_SEAT:-} XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
   echo "WLR_DRM_DEVICES=$WLR_DRM_DEVICES"
   echo "XKB_DEFAULT_RULES=$XKB_DEFAULT_RULES XKB_DEFAULT_LAYOUT=$XKB_DEFAULT_LAYOUT"
   echo "LABWC_BIN=$LABWC_BIN"

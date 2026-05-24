@@ -56,5 +56,5 @@ Those belong to `cardputer-zero-shell` or separate user applications.
 ## Failure Behavior
 
 If the labwc wrapper or ZeroShell binary is missing, the session exits and
-greetd returns to the internal login flow. Recovery uses SSH, HDMI LightDM, and
-system logs.
+the internal greeter service can present the login flow again on the next
+service start. Recovery uses SSH, HDMI LightDM, and system logs.

@@ -4,7 +4,7 @@
 
 ```sh
 sudo apt-get install \
-  build-essential pkg-config greetd wlrctl labwc wayland-protocols \
+  build-essential pkg-config wlrctl labwc wayland-protocols libpam0g-dev \
   device-tree-compiler libglib2.0-dev libpolkit-agent-1-dev \
   libpolkit-gobject-1-dev libwayland-dev libxkbcommon-dev
 ```
@@ -20,8 +20,9 @@ The installer:
 
 - installs the internal DRM display overlay and panel firmware,
 - builds and installs `zero-greeter-wayland`,
+- builds and installs `zero-greeter-auth`,
 - builds and installs `zero-polkit-agent` and `zero-polkit-prompt-wayland`,
-- installs greetd, labwc, udev, polkit, helper, and session files,
+- installs labwc, udev, polkit, helper, PAM, and session files,
 - disables LightDM autologin,
 - enables `zero-hdmi-lightdm-policy.service`,
 - enables `zero-greetd.service`,
@@ -32,6 +33,7 @@ The installer:
 
 ```text
 /usr/local/bin/zero-greeter-wayland
+/usr/local/libexec/cardputer-zero/zero-greeter-auth
 /usr/local/bin/cardputer-zero-greeter-session
 /usr/local/bin/cardputer-zero-session
 /usr/local/bin/cardputer-zero-labwc-session
@@ -44,7 +46,11 @@ The installer:
 /etc/systemd/system/zero-greetd.service
 /etc/systemd/system/zero-key-policy.service
 /etc/systemd/system/zero-hdmi-lightdm-policy.service
-/etc/greetd/cardputer-zero.toml
+/etc/pam.d/cardputer-zero-greeter
+/etc/pam.d/cardputer-zero-login
+/etc/pam.d/cardputer-zero-session
+/etc/security/cardputer-zero-greeter.env
+/etc/security/cardputer-zero-session.env
 /etc/cardputer-zero/session.conf
 /etc/xdg/cardputer-zero-greeter-labwc/*
 /etc/xdg/cardputer-zero-labwc/*
@@ -64,24 +70,36 @@ The installer does not:
 - install `cardputer-zero-shell`,
 - install app entries,
 - implement launcher pages,
-- remove HDMI LightDM.
+- remove HDMI LightDM,
+- install any non-DRM internal display path.
 
-## Internal greetd Backend
+## Internal Greeter Backend
 
-`zero-greetd.service` runs a dedicated greetd instance on VT8:
+`zero-greetd.service` is the internal-screen greeter backend. The name is
+historical and kept for upgrade compatibility; it does not run the `greetd`
+daemon.
 
-```text
-/usr/sbin/greetd -c /etc/greetd/cardputer-zero.toml --vt 8
-```
-
-greetd starts:
+systemd opens a PAM/logind greeter session as `_greetd` on
+`seat-cardputer-zero`, then runs:
 
 ```text
 /usr/local/bin/cardputer-zero-greeter-session
 ```
 
-as `_greetd`. That wrapper starts the Wayland greeter session and then
-`zero-greeter-wayland`.
+That wrapper starts labwc on `/dev/dri/cardputer-zero-internal` and runs:
+
+```text
+/usr/local/bin/zero-greeter-wayland
+```
+
+After the user enters a password, the greeter calls:
+
+```text
+/usr/local/libexec/cardputer-zero/zero-greeter-auth
+```
+
+The helper performs PAM authentication and starts the fixed Zero session as the
+authenticated Linux user.
 
 ## Internal Labwc Session
 

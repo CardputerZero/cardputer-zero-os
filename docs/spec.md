@@ -9,7 +9,7 @@ In scope:
 
 - internal-screen DRM/KMS display setup,
 - internal-screen Wayland greeter,
-- greetd/PAM authentication for existing users,
+- PAM authentication for existing users,
 - real logind user session launch,
 - labwc session configuration,
 - internal keyboard XKB profile,
@@ -46,9 +46,11 @@ Path:
 
 Role:
 
-- runs a dedicated greetd instance on VT8,
+- opens a `_greetd` PAM/logind greeter session on `seat-cardputer-zero`,
 - keeps the internal screen login independent from HDMI LightDM,
-- restarts the internal login backend when needed.
+- starts `cardputer-zero-greeter-session`,
+- exits after successful login so the authenticated user session owns the
+  internal screen.
 
 ### cardputer-zero-greeter-session
 
@@ -62,7 +64,7 @@ Role:
 
 - starts labwc on `/dev/dri/cardputer-zero-internal` as `_greetd`,
 - starts `zero-greeter-wayland`,
-- exits when the greeter exits so greetd can proceed.
+- exits when the greeter exits so systemd can finish the greeter service.
 
 ### zero-greeter-wayland
 
@@ -77,9 +79,32 @@ Role:
 - discover existing normal Linux users,
 - render the 320x170 login UI as a Wayland client,
 - accept password input,
-- use greetd IPC through `GREETD_SOCK`,
-- ask greetd to authenticate with PAM,
-- ask greetd to start `cardputer-zero-session`.
+- call the restricted `zero-greeter-auth` helper,
+- exit after `zero-greeter-auth` successfully starts the user session.
+
+### zero-greeter-auth
+
+Path:
+
+```text
+/usr/local/libexec/cardputer-zero/zero-greeter-auth
+```
+
+Role:
+
+- run as `root:_greetd` with mode `4750`,
+- accept only a username/password request from the greeter over stdin,
+- validate that the selected account is an existing normal Linux user,
+- authenticate through PAM service `cardputer-zero-login`,
+- start the fixed `cardputer-zero-session` with
+  `systemd-run --property=User=<user> --property=PAMName=cardputer-zero-session`.
+
+Non-role:
+
+- arbitrary command execution,
+- arbitrary root shell,
+- app launching,
+- password storage.
 
 Non-role:
 
@@ -115,6 +140,7 @@ Role:
 
 - constrain wlroots/labwc to `/dev/dri/cardputer-zero-internal`,
 - set `XDG_SESSION_TYPE=wayland`,
+- set `XDG_SEAT=seat-cardputer-zero`,
 - start `/opt/cardputer-zero-shell/bin/zero-shell-wayland`.
 
 ### zero-key-policy.service
@@ -130,7 +156,7 @@ Role:
 - run `/usr/local/bin/zero-key-policy` as a root-owned OS seat policy,
 - listen to the Cardputer internal keyboard,
 - implement global short/long Esc behavior when a foreground app has focus,
-- keep the Zero internal session active on VT8.
+- keep the Zero internal seat session active through logind.
 
 Non-role:
 
@@ -149,7 +175,7 @@ Path:
 
 Role:
 
-- find the active Zero user session on `seat0` and `tty8`,
+- find the active Zero user session on `seat-cardputer-zero`,
 - reactivate that session through logind if the visible VT slips away,
 - call `zero-shell-control` as the authenticated user, not as root.
 
@@ -223,7 +249,10 @@ Role:
 
 - assign device groups,
 - tag input/render/video/audio/GPIO/SPI/I2C access,
-- create stable DRM symlinks for internal and HDMI cards.
+- create stable DRM symlinks for internal and HDMI cards,
+- assign the internal ST7789 DRM card and tca8418c keyboard to
+  `seat-cardputer-zero`,
+- leave HDMI on `seat0` for normal Pi OS LightDM.
 
 ## User Specification
 
@@ -240,7 +269,7 @@ The profile does not create users.
 
 The profile must:
 
-- authenticate through greetd/PAM,
+- authenticate through PAM,
 - open a real logind session,
 - run ZeroShell as the authenticated user,
 - run user apps as that user,

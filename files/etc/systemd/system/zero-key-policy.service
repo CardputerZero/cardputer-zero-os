@@ -6,6 +6,8 @@ Wants=zero-greetd.service
 
 [Service]
 Type=simple
+Environment=ZERO_KEY_POLICY_SEAT=seat-cardputer-zero
+Environment=ZERO_KEY_POLICY_TTY=
 ExecStart=/usr/local/bin/zero-key-policy
 Restart=always
 RestartSec=1

@@ -15,7 +15,7 @@ cardputer-zero-shell
 
 ## Launch Path
 
-After greetd/PAM authentication:
+After Zero greeter PAM authentication:
 
 ```text
 /usr/local/bin/cardputer-zero-session
@@ -69,7 +69,8 @@ WLR_RENDERER=pixman
 - device permissions,
 - APPLaunch data directories,
 - `zero-shell-control`,
-- root-owned `zero-key-policy.service` for global Esc and VT8 policy,
+- root-owned `zero-key-policy.service` for global Esc and internal-seat
+  activation policy,
 - `zero-helper`,
 - polkit agent.
 

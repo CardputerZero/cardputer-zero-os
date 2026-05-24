@@ -5,11 +5,14 @@ ROOT=${1:-}
 REPO_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUT_DIR="$ROOT/usr/local/bin"
 OUT="$OUT_DIR/zero-greeter-wayland"
+HELPER_DIR="$ROOT/usr/local/libexec/cardputer-zero"
+HELPER_OUT="$HELPER_DIR/zero-greeter-auth"
 BUILD_DIR="${TMPDIR:-/tmp}/cardputer-zero-greeter-build"
 CC_BIN=${CC:-cc}
 CXX_BIN=${CXX:-c++}
 
 mkdir -p "$OUT_DIR"
+mkdir -p "$HELPER_DIR"
 mkdir -p "$BUILD_DIR"
 
 if ! command -v "$CC_BIN" >/dev/null 2>&1; then
@@ -69,3 +72,20 @@ wayland-scanner private-code "$XDG_SHELL_XML" "$BUILD_DIR/xdg-shell-protocol.c"
   $(pkg-config --libs wayland-client xkbcommon)
 
 chmod 0755 "$OUT"
+
+if [ ! -r /usr/include/security/pam_appl.h ]; then
+  echo "PAM headers not found. Install libpam0g-dev." >&2
+  exit 1
+fi
+
+"$CXX_BIN" -Wall -Wextra -O2 -std=c++17 \
+  -o "$HELPER_OUT" \
+  "$REPO_DIR/greeter/zero-greeter-auth.cpp" \
+  -lpam
+
+if [ -z "$ROOT" ] && getent group _greetd >/dev/null 2>&1; then
+  chown root:_greetd "$HELPER_OUT"
+  chmod 4750 "$HELPER_OUT"
+else
+  chmod 4755 "$HELPER_OUT"
+fi

@@ -7,19 +7,15 @@ if [ -n "$ROOT" ]; then
   exit 0
 fi
 
-if ! command -v greetd >/dev/null 2>&1; then
-  echo "greetd is required for the internal-screen login backend." >&2
-  echo "Install it explicitly with: sudo apt-get install greetd" >&2
-  exit 1
+if ! getent passwd _greetd >/dev/null 2>&1; then
+  useradd --system --home-dir /var/lib/cardputer-zero-greeter --create-home --shell /usr/sbin/nologin _greetd
 fi
 
-if getent passwd _greetd >/dev/null 2>&1; then
-  for group in video input render cardputer-zero; do
-    if getent group "$group" >/dev/null 2>&1; then
-      usermod -a -G "$group" _greetd || true
-    fi
-  done
-fi
+for group in video input render cardputer-zero; do
+  if getent group "$group" >/dev/null 2>&1; then
+    usermod -a -G "$group" _greetd || true
+  fi
+done
 
 if command -v systemd-tmpfiles >/dev/null 2>&1; then
   systemd-tmpfiles --create /etc/tmpfiles.d/cardputer-zero-xwayland.conf || true
@@ -30,13 +26,14 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 cat <<'EOF'
-Cardputer Zero greetd files are installed.
+Cardputer Zero internal greeter files are installed.
 
-zero-greetd.service is the login backend for the internal Wayland/labwc session.
-It keeps the regular Pi OS / HDMI LightDM path independent while giving the
-Zero internal session a real greetd/PAM/logind user session.
+zero-greetd.service is the internal-screen greeter backend. The unit name is
+preserved for upgrade compatibility, but the service does not run the greetd
+daemon. systemd opens a PAM/logind greeter session as _greetd and then runs
+cardputer-zero-greeter-session.
 
-Enable the internal greetd backend with:
+Enable the internal greeter backend with:
 
   sudo systemctl enable --now zero-greetd.service
 

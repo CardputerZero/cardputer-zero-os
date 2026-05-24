@@ -1,6 +1,7 @@
 WLR_BACKENDS=drm,libinput
 WLR_DRM_DEVICES=/dev/dri/cardputer-zero-internal
 WLR_RENDERER=pixman
+XDG_SEAT=seat-cardputer-zero
 
 DESKTOP_SESSION=cardputer-zero-greeter
 XDG_CURRENT_DESKTOP=CardputerZero

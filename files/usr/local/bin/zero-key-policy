@@ -15,7 +15,8 @@ KEY_ESC = 1
 KEY_TAB = 15
 LONG_PRESS_SECONDS = float(os.environ.get("ZERO_ESC_LONG_PRESS_SECONDS", "0.8"))
 DEBUG = os.environ.get("ZERO_KEY_POLICY_DEBUG", "0") == "1"
-ZERO_TTY = os.environ.get("ZERO_KEY_POLICY_TTY", "tty8")
+ZERO_TTY = os.environ.get("ZERO_KEY_POLICY_TTY", "")
+ZERO_SEAT = os.environ.get("ZERO_KEY_POLICY_SEAT", "seat-cardputer-zero")
 ZERO_WAYLAND_DISPLAY = os.environ.get("ZERO_KEY_POLICY_WAYLAND_DISPLAY", "wayland-0")
 ZERO_SHELL_PROCESS = os.environ.get("ZERO_KEY_POLICY_SHELL_PROCESS", "zero-shell-wayland")
 
@@ -163,7 +164,9 @@ def zero_session():
             continue
         session_id, uid_text, username = fields[0], fields[1], fields[2]
         seat, session_class, tty = fields[3], fields[5], fields[6]
-        if seat != "seat0" or session_class != "user" or tty != ZERO_TTY:
+        if seat != ZERO_SEAT or session_class != "user":
+            continue
+        if ZERO_TTY and tty != ZERO_TTY:
             continue
         try:
             uid = int(uid_text)
@@ -183,6 +186,8 @@ def active_tty():
 
 
 def ensure_zero_vt(session_id):
+    if not ZERO_TTY:
+        return
     if active_tty() == ZERO_TTY:
         return
     if os.geteuid() != 0:

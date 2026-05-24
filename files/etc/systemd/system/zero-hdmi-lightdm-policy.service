@@ -1,10 +1,12 @@
 [Unit]
 Description=Cardputer Zero HDMI LightDM policy
-After=systemd-udevd.service
+After=systemd-udevd.service systemd-udev-settle.service
+Wants=systemd-udev-settle.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/zero-hdmi-lightdm-policy
+TimeoutStartSec=25
 
 [Install]
 WantedBy=multi-user.target

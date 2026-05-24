@@ -1,0 +1,14 @@
+#%PAM-1.0
+#
+# Authentication-only PAM stack for the Cardputer Zero internal greeter.
+# The greeter uses this to check the password; the real user session is opened
+# separately by systemd-run with PAMName=cardputer-zero-session.
+
+auth       optional   pam_faildelay.so delay=3000000
+auth       requisite  pam_nologin.so
+@include common-auth
+auth       optional   pam_group.so
+
+account    include    common-account
+
+password   include    common-password

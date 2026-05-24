@@ -51,8 +51,8 @@ The normal Zero labwc session starts the agent from:
 ```
 
 This matters because polkit agents register against a specific logind session.
-Starting the agent from SSH or before greetd creates the real session can make
-polkit reject the registration.
+Starting the agent from SSH or before the Zero login flow creates the real user
+session can make polkit reject the registration.
 
 ## AppStore Contract
 

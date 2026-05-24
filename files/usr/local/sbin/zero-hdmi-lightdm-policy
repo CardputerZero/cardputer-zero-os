@@ -3,27 +3,51 @@ set -eu
 
 RUN_DIR=/run/cardputer-zero
 MARKER=$RUN_DIR/hdmi-connected
+WAIT_SECONDS=${ZERO_HDMI_WAIT_SECONDS:-15}
 
 mkdir -p "$RUN_DIR"
 
-hdmi_connected=0
-for status in /sys/class/drm/card*-HDMI-A-*/status; do
-  [ -r "$status" ] || continue
-  if [ "$(cat "$status" 2>/dev/null || true)" = "connected" ]; then
-    hdmi_connected=1
+hdmi_status_summary() {
+  found=0
+  for status in /sys/class/drm/card*-HDMI-A-*/status; do
+    [ -r "$status" ] || continue
+    found=1
+    printf '%s=%s ' "$status" "$(cat "$status" 2>/dev/null || true)"
+  done
+  if [ "$found" = "0" ]; then
+    printf 'no-hdmi-status'
+  fi
+}
+
+hdmi_connected() {
+  for status in /sys/class/drm/card*-HDMI-A-*/status; do
+    [ -r "$status" ] || continue
+    if [ "$(cat "$status" 2>/dev/null || true)" = "connected" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+deadline=$(( $(date +%s) + WAIT_SECONDS ))
+while ! hdmi_connected; do
+  if [ "$(date +%s)" -ge "$deadline" ]; then
     break
   fi
+  sleep 1
 done
 
-if [ "$hdmi_connected" = "1" ]; then
+if hdmi_connected; then
   touch "$MARKER"
+  echo "Cardputer Zero HDMI policy: connected ($(hdmi_status_summary))"
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl start lightdm.service >/dev/null 2>&1 || true
+    systemctl --no-block start lightdm.service >/dev/null 2>&1 || true
   fi
   exit 0
 fi
 
 rm -f "$MARKER"
+echo "Cardputer Zero HDMI policy: not connected after ${WAIT_SECONDS}s ($(hdmi_status_summary))"
 if command -v systemctl >/dev/null 2>&1; then
-  systemctl stop lightdm.service >/dev/null 2>&1 || true
+  systemctl --no-block stop lightdm.service >/dev/null 2>&1 || true
 fi

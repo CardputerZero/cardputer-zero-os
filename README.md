@@ -43,10 +43,10 @@ internal ST7789 display
 The profile intentionally puts login, session, windows, and privilege prompts
 back on standard Linux mechanisms:
 
-- `greetd` creates the login flow and user session.
-- PAM authenticates existing Linux users.
-- logind owns session activation.
-- labwc owns the internal screen compositor session.
+- systemd starts the internal greeter as a real logind greeter session.
+- PAM authenticates existing Linux users through a restricted root helper.
+- logind owns greeter and user session activation.
+- labwc owns the internal screen compositor sessions.
 - ZeroShell runs as a Wayland client after login.
 - Apps create Wayland or Xwayland windows.
 - polkit handles privileged authorization prompts.
@@ -60,14 +60,13 @@ service logs.
 ```text
 systemd boot
   -> zero-hdmi-lightdm-policy.service keeps HDMI LightDM separate
-  -> zero-greetd.service starts greetd on VT8
-  -> greetd runs cardputer-zero-greeter-session as _greetd
+  -> zero-greetd.service opens a _greetd logind greeter session
   -> cardputer-zero-greeter-session starts labwc on /dev/dri/cardputer-zero-internal
   -> zero-greeter-wayland shows the 320x170 login UI
   -> user selects an existing Linux account and enters a password
-  -> zero-greeter-wayland talks to greetd through GREETD_SOCK
-  -> greetd performs PAM authentication and opens the user session
-  -> greetd starts cardputer-zero-session as that user
+  -> zero-greeter-wayland calls zero-greeter-auth
+  -> zero-greeter-auth performs PAM authentication as root
+  -> zero-greeter-auth starts cardputer-zero-session as that user
   -> cardputer-zero-session starts cardputer-zero-labwc-session
   -> labwc starts /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
@@ -102,20 +101,31 @@ The greeter discovers ordinary users from `/etc/passwd`:
 - home directory under `/home`,
 - shell is not `nologin` or `false`.
 
-### greetd, PAM, And logind
+### Greeter, PAM, And logind
 
-The greeter is a small Wayland UI. It does not authenticate passwords itself.
-It sends login requests to greetd. greetd runs PAM and creates the logind
-session, which gives the user compositor the correct active session and device
-access.
+The greeter UI is a small Wayland client running as `_greetd`. It does not read
+`/etc/shadow`, does not run the user desktop, and does not keep a password
+database. Its job is to draw the login form and collect the password on the
+internal screen.
+
+The actual authentication boundary is `/usr/local/libexec/cardputer-zero/zero-greeter-auth`.
+It is installed as `root:_greetd` with mode `4750`. Only the greeter user can
+execute it, and it accepts only a username/password request over stdin. It
+performs PAM authentication using `cardputer-zero-login`, checks that the user
+is an existing normal Linux user, and starts the fixed Cardputer Zero session
+with `systemd-run` and `PAMName=cardputer-zero-session`.
 
 ```text
 zero-greeter-wayland
-  -> greetd IPC
-  -> PAM
-  -> logind user session
-  -> cardputer-zero-session
+  -> zero-greeter-auth
+  -> PAM service cardputer-zero-login
+  -> systemd-run User=<authenticated user> PAMName=cardputer-zero-session
+  -> logind user session on seat-cardputer-zero
+  -> cardputer-zero-session as the authenticated user
 ```
+
+This mirrors a standard display-manager privilege split: the visible greeter is
+not root, but the authentication/session broker has controlled root privilege.
 
 ### Internal DRM Display Overlay
 
@@ -165,10 +175,18 @@ The internal sessions set:
 WLR_DRM_DEVICES=/dev/dri/cardputer-zero-internal
 WLR_BACKENDS=drm,libinput
 WLR_RENDERER=pixman
+XDG_SEAT=seat-cardputer-zero
 ```
 
 The HDMI LightDM policy constrains Pi OS greeter/desktop work to the HDMI DRM
-device when HDMI is present.
+device when HDMI is present. HDMI remains on the normal `seat0`.
+
+This seat split is required for simultaneous display. In logind, multiple
+sessions may be attached to one seat, but only one can be active. If the Zero
+internal session and HDMI LightDM both live on `seat0`, the inactive compositor
+can fall back to a headless wlroots output such as `NOOP-1`. The internal
+ST7789 DRM device and Cardputer keyboard are therefore assigned by udev to
+`seat-cardputer-zero`, while HDMI stays on `seat0`.
 
 ### labwc Window Ownership
 
@@ -181,11 +199,13 @@ Wayland or Xwayland clients.
 When a foreground app has keyboard focus, ZeroShell cannot receive global key
 events. `cardputer-zero-os` therefore owns the device-level key policy.
 
-`zero-key-policy.service` runs as root because it may need to reactivate the
-Zero logind session on VT8. That is a Linux seat/console operation, not a
-launcher operation. When it needs to tell ZeroShell what to do, it drops back
-to the authenticated user and calls `zero-shell-control` inside that user's
-Wayland runtime.
+`zero-key-policy.service` runs as root because it listens to the internal
+keyboard device before and after login and may need to activate the visible Zero
+session through logind. It searches for the Zero user session on
+`seat-cardputer-zero`. That is a Linux seat/session operation, not a launcher
+operation. When it needs to tell ZeroShell what to do, it drops back to the
+authenticated user and calls `zero-shell-control` inside that user's Wayland
+runtime.
 
 ```text
 Tab
@@ -201,10 +221,9 @@ long Esc
   -> labwc asks active window to close and focuses ZeroShell
 ```
 
-If the active virtual terminal ever slips away from VT8, `zero-key-policy`
-reactivates the Zero session through `loginctl activate <session>` and falls
-back to `chvt 8` only for that fixed internal-screen VT. It does not expose a
-general VT switcher or arbitrary root command path.
+If the active Zero session slips away, `zero-key-policy` reactivates it through
+`loginctl activate <session>`. It does not expose a general VT switcher or
+arbitrary root command path.
 
 ### polkit
 
@@ -226,19 +245,22 @@ user app or shell
 | --- | --- |
 | `install.sh` | Installs the OS profile, builds greeter/polkit tools, installs internal DRM display setup, enables Zero services. |
 | `uninstall.sh` | Removes installed profile files while leaving Linux users intact. |
-| `files/etc/systemd/system/zero-greetd.service` | Internal-screen greetd service on VT8. |
-| `files/etc/systemd/system/zero-key-policy.service` | Root-owned internal keyboard and VT policy service. |
+| `files/etc/systemd/system/zero-greetd.service` | Internal-screen greeter backend. The name is historical; it no longer runs greetd. |
+| `files/etc/systemd/system/zero-key-policy.service` | Root-owned internal keyboard and seat activation policy service. |
 | `files/etc/systemd/system/zero-hdmi-lightdm-policy.service` | Keeps HDMI LightDM independent from the internal screen. |
-| `files/etc/greetd/cardputer-zero.toml` | greetd config that runs `cardputer-zero-greeter-session` as `_greetd`. |
 | `files/usr/local/bin/cardputer-zero-greeter-session` | Starts a small labwc greeter session and runs `zero-greeter-wayland`. |
-| `greeter/zero-greeter-wayland.cpp` | 320x170 Wayland greeter UI and greetd IPC client. |
+| `greeter/zero-greeter-wayland.cpp` | 320x170 Wayland greeter UI. |
+| `greeter/zero-greeter-auth.cpp` | Restricted root helper for PAM authentication and user session launch. |
+| `files/etc/pam.d/cardputer-zero-greeter` | PAM stack that opens the `_greetd` greeter logind session. |
+| `files/etc/pam.d/cardputer-zero-login` | Authentication-only PAM stack for checking the selected user's password. |
+| `files/etc/pam.d/cardputer-zero-session` | PAM stack used when opening the authenticated Zero user session. |
 | `files/usr/local/bin/cardputer-zero-session` | Post-auth session handoff script. |
 | `files/usr/local/bin/cardputer-zero-labwc-session` | Starts user labwc on the internal DRM output and then starts ZeroShell. |
 | `files/etc/cardputer-zero/session.conf` | Paths and session policy for the internal Wayland session. |
 | `files/etc/xdg/cardputer-zero-greeter-labwc/*` | labwc config for the pre-login greeter session. |
 | `files/etc/xdg/cardputer-zero-labwc/*` | labwc config and user-session autostart. |
 | `files/usr/local/bin/zero-shell-control` | Command bridge used by labwc and key policy to control tasks. |
-| `files/usr/local/bin/zero-key-policy` | Narrow Cardputer keyboard policy for short/long Esc and VT8 reactivation. |
+| `files/usr/local/bin/zero-key-policy` | Narrow Cardputer keyboard policy for short/long Esc and Zero seat reactivation. |
 | `files/usr/local/sbin/zero-helper` | Restricted privileged helper. |
 | `polkit-agent/zero-polkit-agent.c` | Wayland-only polkit authentication agent. |
 | `polkit-agent/zero-polkit-prompt-wayland.cpp` | Zero-sized Wayland password prompt. |
@@ -253,7 +275,7 @@ user app or shell
 
 ```sh
 sudo apt-get install \
-  build-essential pkg-config greetd wlrctl labwc wayland-protocols \
+  build-essential pkg-config wlrctl labwc wayland-protocols libpam0g-dev \
   device-tree-compiler libglib2.0-dev libpolkit-agent-1-dev \
   libpolkit-gobject-1-dev libwayland-dev libxkbcommon-dev
 
@@ -290,7 +312,7 @@ Use SSH or HDMI LightDM as the recovery surface. Check:
 
 ```sh
 journalctl -b -u zero-greetd.service --no-pager
-cat /tmp/cardputer-zero-greeter-session.log
+cat /run/cardputer-zero/zero-greeter-session.log
 ```
 
 Disable the internal greeter service if needed:

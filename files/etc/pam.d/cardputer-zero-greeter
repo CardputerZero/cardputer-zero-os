@@ -1,0 +1,14 @@
+#%PAM-1.0
+#
+# PAM stack for the unauthenticated Cardputer Zero internal-screen greeter.
+# This opens a real logind greeter session on seat-cardputer-zero so wlroots can
+# acquire the internal DRM output and the tca8418c keyboard through logind.
+
+auth       required   pam_permit.so
+account    required   pam_permit.so
+password   required   pam_deny.so
+
+session    required   pam_env.so readenv=1
+session    required   pam_env.so readenv=1 envfile=/etc/default/locale
+session    required   pam_env.so conffile=/etc/security/cardputer-zero-greeter.env readenv=0 user_readenv=0
+@include common-session

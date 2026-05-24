@@ -1,0 +1,18 @@
+#%PAM-1.0
+#
+# PAM stack for the authenticated Cardputer Zero internal user session.
+# This is used by systemd-run after zero-greeter-wayland has authenticated the
+# password. It creates the logind session on seat-cardputer-zero without a VT.
+
+account    include    common-account
+
+session [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so close
+session    required   pam_loginuid.so
+session    required   pam_env.so readenv=1
+session    required   pam_env.so readenv=1 envfile=/etc/default/locale
+session    required   pam_env.so conffile=/etc/security/cardputer-zero-session.env readenv=0 user_readenv=0
+session    required   pam_limits.so
+session    optional   pam_mail.so standard
+session    optional   pam_keyinit.so force revoke
+@include common-session
+session [success=ok ignore=ignore module_unknown=ignore default=bad] pam_selinux.so open
