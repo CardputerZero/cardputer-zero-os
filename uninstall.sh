@@ -40,7 +40,9 @@ rm -f /usr/local/bin/zero-polkit-prompt-wayland
 rm -f /usr/local/bin/cardputer-zero-lightdm-labwc
 rm -f /usr/local/bin/cardputer-zero-greeter-session
 rm -f /usr/local/bin/cardputer-zero-labwc-session
+rm -f /usr/local/bin/cardputer-zero-shell-session
 rm -f /usr/local/bin/cardputer-zero-session
+rm -f /usr/local/bin/zero-window-agent
 rm -f /usr/local/bin/zero-key-policy
 rm -f /usr/local/sbin/zero-helper
 rm -f /usr/local/sbin/zero-hdmi-lightdm-policy

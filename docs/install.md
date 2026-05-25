@@ -4,7 +4,7 @@
 
 ```sh
 sudo apt-get install \
-  build-essential pkg-config wlrctl labwc wayland-protocols libpam0g-dev \
+  build-essential pkg-config labwc wayland-protocols libpam0g-dev \
   device-tree-compiler libglib2.0-dev libpolkit-agent-1-dev \
   libpolkit-gobject-1-dev libwayland-dev libxkbcommon-dev
 ```
@@ -37,6 +37,8 @@ The installer:
 /usr/local/bin/cardputer-zero-greeter-session
 /usr/local/bin/cardputer-zero-session
 /usr/local/bin/cardputer-zero-labwc-session
+/usr/local/bin/cardputer-zero-shell-session
+/usr/local/bin/zero-window-agent
 /usr/local/bin/zero-key-policy
 /usr/local/bin/zero-shell-control
 /usr/local/bin/zero-polkit-agent
@@ -123,6 +125,7 @@ ls -l /dev/dri/cardputer-zero-internal /dev/dri/cardputer-zero-hdmi
 ls -l /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ps -eo user,pid,args | grep -E 'zero-greeter-wayland|zero-shell-wayland|labwc|zero-key-policy'
 pkaction --verbose --action-id org.cardputerzero.zero-helper
+XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 zero-window-agent --once
 ```
 
 ## Uninstall

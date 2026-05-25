@@ -20,7 +20,9 @@ After Zero greeter PAM authentication:
 ```text
 /usr/local/bin/cardputer-zero-session
   -> /usr/local/bin/cardputer-zero-labwc-session
-  -> labwc -S /opt/cardputer-zero-shell/bin/zero-shell-wayland
+  -> labwc -S /usr/local/bin/cardputer-zero-shell-session
+  -> zero-window-agent
+  -> /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
 
 The shell path can be overridden in:
@@ -66,6 +68,7 @@ WLR_RENDERER=pixman
 
 - authenticated user session,
 - Wayland compositor on the internal DRM output,
+- `zero-window-agent` as the authoritative task-state and task-action backend,
 - device permissions,
 - APPLaunch data directories,
 - `zero-shell-control`,

@@ -18,7 +18,6 @@ DEBUG = os.environ.get("ZERO_KEY_POLICY_DEBUG", "0") == "1"
 ZERO_TTY = os.environ.get("ZERO_KEY_POLICY_TTY", "")
 ZERO_SEAT = os.environ.get("ZERO_KEY_POLICY_SEAT", "seat-cardputer-zero")
 ZERO_WAYLAND_DISPLAY = os.environ.get("ZERO_KEY_POLICY_WAYLAND_DISPLAY", "wayland-0")
-ZERO_SHELL_PROCESS = os.environ.get("ZERO_KEY_POLICY_SHELL_PROCESS", "zero-shell-wayland")
 
 
 def input_devices():
@@ -48,9 +47,6 @@ def run_control(action):
         return
 
     session_id, uid, username = session
-    if not shell_running(uid):
-        log(f"skip action={action} shell=not-running")
-        return
 
     ensure_zero_vt(session_id)
 
@@ -60,16 +56,21 @@ def run_control(action):
 
     log(f"action={action} session={session_id} user={username}")
     try:
-        subprocess.run(
+        result = subprocess.run(
             user_command(uid, username, ["/usr/local/bin/zero-shell-control", action]),
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
             check=False,
             timeout=2,
         )
     except subprocess.TimeoutExpired:
-        log(f"timeout action={action}")
+        report(f"timeout action={action}")
+    else:
+        if result.returncode != 0:
+            stderr = result.stderr.strip().replace("\n", " ")
+            report(f"failed action={action} rc={result.returncode} {stderr}")
     time.sleep(0.08)
     ensure_zero_vt(session_id)
 
@@ -101,47 +102,39 @@ def log(message):
         file.write(f"{time.strftime('%H:%M:%S')} {message}\n")
 
 
-def shell_running(uid):
-    proc_root = "/proc"
-    for name in os.listdir(proc_root):
-        if not name.isdigit():
-            continue
-        proc_dir = os.path.join(proc_root, name)
-        try:
-            if os.stat(proc_dir).st_uid != uid:
-                continue
-            with open(os.path.join(proc_dir, "cmdline"), "rb") as file:
-                argv = file.read().split(b"\0")
-        except OSError:
-            continue
-        if not argv or not argv[0]:
-            continue
-        executable = os.path.basename(argv[0].decode("utf-8", errors="replace"))
-        if executable == ZERO_SHELL_PROCESS:
-            return True
-    return False
+def report(message):
+    log(message)
+    print(f"zero-key-policy: {message}", file=sys.stderr, flush=True)
 
 
 def shell_is_active(uid, username):
-    checks = (
-        ["wlrctl", "toplevel", "find", "state:active", "app_id:cardputer-zero-shell"],
-        ["wlrctl", "toplevel", "find", "state:active", "title:Cardputer Zero Shell"],
-    )
-    for command in checks:
-        try:
-            result = subprocess.run(
-                user_command(uid, username, command),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-                timeout=1,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            continue
-        if result.returncode == 0:
-            return True
-    return False
+    command = [
+        "python3",
+        "-c",
+        (
+            "import socket,sys;"
+            "p=sys.argv[1];"
+            "s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);"
+            "s.settimeout(1.2);"
+            "s.connect(p);"
+            "s.sendall(b'active-is-shell\\n');"
+            "d=s.recv(256).decode('utf-8','replace');"
+            "sys.exit(0 if d.startswith('ok\\t') else 1)"
+        ),
+        f"/run/user/{uid}/cardputer-zero/window-agent.sock",
+    ]
+    try:
+        result = subprocess.run(
+            user_command(uid, username, command),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=1.5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
 
 
 def zero_session():

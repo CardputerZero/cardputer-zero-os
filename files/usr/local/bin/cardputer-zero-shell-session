@@ -1,0 +1,44 @@
+#!/bin/sh
+set -eu
+
+SHELL_CMD=${CARDPUTER_ZERO_WAYLAND_SHELL:-/opt/cardputer-zero-shell/bin/zero-shell-wayland}
+RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+AGENT_DIR=$RUNTIME_DIR/cardputer-zero
+AGENT_SOCKET=$AGENT_DIR/window-agent.sock
+AGENT_LOG=$AGENT_DIR/window-agent.log
+AGENT_PID=$AGENT_DIR/window-agent.pid
+
+mkdir -p "$AGENT_DIR"
+chmod 700 "$AGENT_DIR"
+
+agent_running=0
+if [ -r "$AGENT_PID" ]; then
+  old_pid=$(cat "$AGENT_PID" 2>/dev/null || true)
+  if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+    agent_running=1
+  fi
+fi
+
+if [ "$agent_running" != "1" ]; then
+  rm -f "$AGENT_SOCKET"
+  if ! command -v zero-window-agent >/dev/null 2>&1; then
+    echo "cardputer-zero-shell-session: zero-window-agent is not installed" >&2
+    exit 127
+  fi
+  zero-window-agent >>"$AGENT_LOG" 2>&1 &
+  echo "$!" >"$AGENT_PID"
+fi
+
+i=0
+while [ "$i" -lt 20 ]; do
+  [ -S "$AGENT_SOCKET" ] && break
+  i=$((i + 1))
+  sleep 0.1
+done
+
+if [ ! -S "$AGENT_SOCKET" ]; then
+  echo "cardputer-zero-shell-session: zero-window-agent socket did not appear: $AGENT_SOCKET" >&2
+  exit 1
+fi
+
+exec "$SHELL_CMD"

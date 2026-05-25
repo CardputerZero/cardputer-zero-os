@@ -28,6 +28,8 @@ Then it reads:
 cardputer-zero-session
   -> cardputer-zero-labwc-session
   -> labwc on /dev/dri/cardputer-zero-internal
+  -> cardputer-zero-shell-session
+  -> zero-window-agent
   -> /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
 
@@ -55,6 +57,6 @@ Those belong to `cardputer-zero-shell` or separate user applications.
 
 ## Failure Behavior
 
-If the labwc wrapper or ZeroShell binary is missing, the session exits and
-the internal greeter service can present the login flow again on the next
-service start. Recovery uses SSH, HDMI LightDM, and system logs.
+If the labwc wrapper, `zero-window-agent`, the agent socket, or ZeroShell binary
+is missing, the session exits. Recovery uses SSH, HDMI LightDM, and system
+logs. The session must not start an alternate task backend.

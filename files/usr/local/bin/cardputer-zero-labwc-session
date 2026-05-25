@@ -58,12 +58,8 @@ if [ ! -d "$LABWC_CONFIG_DIR" ]; then
   exit 1
 fi
 
-if [ -n "${CARDPUTER_ZERO_WAYLAND_SHELL:-}" ]; then
-  exec "$LABWC_BIN" -C "$LABWC_CONFIG_DIR" -S "$CARDPUTER_ZERO_WAYLAND_SHELL"
-fi
-
-if [ -x /opt/cardputer-zero-shell/bin/zero-shell-wayland ]; then
-  exec "$LABWC_BIN" -C "$LABWC_CONFIG_DIR" -S /opt/cardputer-zero-shell/bin/zero-shell-wayland
+if [ -n "${CARDPUTER_ZERO_WAYLAND_SHELL:-}" ] || [ -x /opt/cardputer-zero-shell/bin/zero-shell-wayland ]; then
+  exec "$LABWC_BIN" -C "$LABWC_CONFIG_DIR" -S /usr/local/bin/cardputer-zero-shell-session
 fi
 
 cat >&2 <<'EOF'

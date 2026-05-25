@@ -68,7 +68,9 @@ systemd boot
   -> zero-greeter-auth performs PAM authentication as root
   -> zero-greeter-auth starts cardputer-zero-session as that user
   -> cardputer-zero-session starts cardputer-zero-labwc-session
-  -> labwc starts /opt/cardputer-zero-shell/bin/zero-shell-wayland
+  -> labwc starts cardputer-zero-shell-session
+  -> cardputer-zero-shell-session starts zero-window-agent
+  -> cardputer-zero-shell-session execs /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
 
 Expected process shape:
@@ -76,7 +78,8 @@ Expected process shape:
 ```text
 _greetd  labwc -C /etc/xdg/cardputer-zero-greeter-labwc
 _greetd  /usr/local/bin/zero-greeter-wayland
-pi       labwc -C /etc/xdg/cardputer-zero-labwc -S /opt/cardputer-zero-shell/bin/zero-shell-wayland
+pi       labwc -C /etc/xdg/cardputer-zero-labwc -S /usr/local/bin/cardputer-zero-shell-session
+pi       zero-window-agent
 pi       /opt/cardputer-zero-shell/bin/zero-shell-wayland
 root     python3 /usr/local/bin/zero-key-policy
 ```
@@ -256,6 +259,10 @@ user app or shell
 | `files/etc/pam.d/cardputer-zero-session` | PAM stack used when opening the authenticated Zero user session. |
 | `files/usr/local/bin/cardputer-zero-session` | Post-auth session handoff script. |
 | `files/usr/local/bin/cardputer-zero-labwc-session` | Starts user labwc on the internal DRM output and then starts ZeroShell. |
+| `files/usr/local/bin/cardputer-zero-shell-session` | Starts `zero-window-agent`, requires its socket, then execs ZeroShell. |
+| `window-agent/zero-window-agent.cpp` | Session-local bridge from labwc foreign-toplevel events to the Zero task socket. |
+| `scripts/setup-window-agent.sh` | Builds and installs `zero-window-agent` from the vendored Wayland protocol. |
+| `protocols/wlr-foreign-toplevel-management-unstable-v1.xml` | Vendored wlroots foreign-toplevel protocol used by `zero-window-agent`. |
 | `files/etc/cardputer-zero/session.conf` | Paths and session policy for the internal Wayland session. |
 | `files/etc/xdg/cardputer-zero-greeter-labwc/*` | labwc config for the pre-login greeter session. |
 | `files/etc/xdg/cardputer-zero-labwc/*` | labwc config and user-session autostart. |
@@ -275,7 +282,7 @@ user app or shell
 
 ```sh
 sudo apt-get install \
-  build-essential pkg-config wlrctl labwc wayland-protocols libpam0g-dev \
+  build-essential pkg-config labwc wayland-protocols libpam0g-dev \
   device-tree-compiler libglib2.0-dev libpolkit-agent-1-dev \
   libpolkit-gobject-1-dev libwayland-dev libxkbcommon-dev
 
@@ -296,14 +303,16 @@ systemctl is-enabled zero-greetd.service
 systemctl status zero-greetd.service
 ls -l /dev/dri/cardputer-zero-internal /dev/dri/cardputer-zero-hdmi
 ps -eo user,pid,args | grep -E 'zero-greeter-wayland|zero-shell-wayland|labwc|zero-key-policy'
-XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 wlrctl toplevel list
+XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 zero-window-agent --once
 ```
 
-Expected examples:
+Expected task snapshot examples:
 
 ```text
-cardputer-zero-shell: Cardputer Zero Shell
-lofibox: LoFiBox Zero
+snapshot-begin
+task    t1    cardputer-zero-shell    Cardputer Zero Shell    activated
+task    t2    lofibox                 LoFiBox Zero
+snapshot-end
 ```
 
 ## Recovery
@@ -332,7 +341,9 @@ another graphics backend.
 cardputer-zero-os
   -> creates authenticated user session
   -> starts labwc on /dev/dri/cardputer-zero-internal
-  -> starts /opt/cardputer-zero-shell/bin/zero-shell-wayland
+  -> starts cardputer-zero-shell-session
+  -> cardputer-zero-shell-session starts zero-window-agent
+  -> cardputer-zero-shell-session execs /opt/cardputer-zero-shell/bin/zero-shell-wayland
 
 cardputer-zero-shell
   -> scans /usr/share/APPLaunch/applications/*.desktop
@@ -354,4 +365,5 @@ cardputer-zero-shell
 - [docs/kms-labwc.md](docs/kms-labwc.md)
 - [docs/input.md](docs/input.md)
 - [docs/zero-shell-interface.md](docs/zero-shell-interface.md)
+- [docs/window-agent.md](docs/window-agent.md)
 - [docs/spec.md](docs/spec.md)

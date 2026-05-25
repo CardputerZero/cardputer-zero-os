@@ -46,6 +46,7 @@ install_tree_files() {
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-lightdm-labwc" /usr/local/bin/cardputer-zero-lightdm-labwc 0755
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-greeter-session" /usr/local/bin/cardputer-zero-greeter-session 0755
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-labwc-session" /usr/local/bin/cardputer-zero-labwc-session 0755
+install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-shell-session" /usr/local/bin/cardputer-zero-shell-session 0755
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-session" /usr/local/bin/cardputer-zero-session 0755
 install_file "$REPO_DIR/files/usr/local/bin/zero-key-policy" /usr/local/bin/zero-key-policy 0755
 install_file "$REPO_DIR/files/usr/local/bin/zero-shell-control" /usr/local/bin/zero-shell-control 0755
@@ -73,12 +74,12 @@ install_tree_files "$REPO_DIR/files/usr/share/cardputer-zero" /usr/share/cardput
 install_tree_files "$REPO_DIR/files/usr/share/X11" /usr/share/X11 0644
 
 need_live_command pkexec "polkitd/policykit-1"
-need_live_command wlrctl "wlrctl"
 need_live_command dtc "device-tree-compiler"
 if [ -z "$ROOT" ]; then
   sh "$REPO_DIR/scripts/setup-internal-drm-display.sh"
 fi
 sh "$REPO_DIR/scripts/setup-greeter.sh" "$ROOT"
+sh "$REPO_DIR/scripts/setup-window-agent.sh" "$ROOT"
 sh "$REPO_DIR/scripts/setup-polkit-agent.sh" "$ROOT"
 sh "$REPO_DIR/scripts/setup-cursor-theme.sh" "$ROOT"
 sh "$REPO_DIR/scripts/setup-session.sh" "$ROOT"

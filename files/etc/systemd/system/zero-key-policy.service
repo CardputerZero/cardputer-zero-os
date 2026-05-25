@@ -1,8 +1,7 @@
 [Unit]
 Description=Cardputer Zero internal keyboard policy
 Documentation=file:/usr/local/bin/zero-key-policy
-After=systemd-logind.service zero-greetd.service
-Wants=zero-greetd.service
+After=systemd-logind.service
 
 [Service]
 Type=simple
