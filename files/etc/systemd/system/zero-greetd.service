@@ -28,6 +28,7 @@ Environment=XKB_DEFAULT_LAYOUT=cardputerzero
 # Xwayland refuses to start if LightDM/labwc left this shared directory in a
 # non-standard state. The /run log directory is shared with root-owned recovery
 # helpers, so prepare it as root before dropping to the greeter user.
+ExecCondition=+/usr/local/libexec/cardputer-zero/zero-greeter-should-start
 ExecStartPre=+/usr/bin/install -d -m 1777 -o root -g root /tmp/.X11-unix
 ExecStartPre=+/usr/bin/install -d -m 0775 -o root -g cardputer-zero /run/cardputer-zero
 ExecStartPre=+/usr/bin/touch /run/cardputer-zero/zero-greeter-session.log

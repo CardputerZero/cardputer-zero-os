@@ -8,8 +8,22 @@ AGENT_SOCKET=$AGENT_DIR/window-agent.sock
 AGENT_LOG=$AGENT_DIR/window-agent.log
 AGENT_PID=$AGENT_DIR/window-agent.pid
 
+start_zero_user_services() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  [ -S "$RUNTIME_DIR/bus" ] || return 0
+
+  DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=$RUNTIME_DIR/bus}
+  export DBUS_SESSION_BUS_ADDRESS
+
+  for unit in pipewire.service wireplumber.service pipewire-pulse.service; do
+    systemctl --user start "$unit" >/dev/null 2>&1 || true
+  done
+}
+
 mkdir -p "$AGENT_DIR"
 chmod 700 "$AGENT_DIR"
+
+start_zero_user_services
 
 agent_running=0
 if [ -r "$AGENT_PID" ]; then

@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+seat=${ZERO_GREETER_SEAT:-seat-cardputer-zero}
+
+command -v loginctl >/dev/null 2>&1 || exit 0
+
+for session_id in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}'); do
+  [ -n "$session_id" ] || continue
+  session_name=$(loginctl show-session "$session_id" -p Name --value 2>/dev/null || true)
+  session_seat=$(loginctl show-session "$session_id" -p Seat --value 2>/dev/null || true)
+  session_class=$(loginctl show-session "$session_id" -p Class --value 2>/dev/null || true)
+  session_leader=$(loginctl show-session "$session_id" -p Leader --value 2>/dev/null || true)
+
+  if [ "$session_seat" = "$seat" ] &&
+     [ "$session_name" != "_greetd" ] &&
+     [ "$session_class" = "user" ] &&
+     [ -n "$session_leader" ] &&
+     kill -0 "$session_leader" 2>/dev/null; then
+    printf 'zero-greeter-should-start: user session already owns %s: %s %s\n' "$seat" "$session_id" "$session_name" >&2
+    exit 1
+  fi
+done
+
+exit 0

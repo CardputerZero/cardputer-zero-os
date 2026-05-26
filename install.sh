@@ -50,13 +50,16 @@ install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-shell-session" /usr/l
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-session" /usr/local/bin/cardputer-zero-session 0755
 install_file "$REPO_DIR/files/usr/local/bin/zero-key-policy" /usr/local/bin/zero-key-policy 0755
 install_file "$REPO_DIR/files/usr/local/bin/zero-shell-control" /usr/local/bin/zero-shell-control 0755
+install_file "$REPO_DIR/files/usr/local/libexec/cardputer-zero/zero-greeter-should-start" /usr/local/libexec/cardputer-zero/zero-greeter-should-start 0755
 install_file "$REPO_DIR/files/usr/local/sbin/zero-helper" /usr/local/sbin/zero-helper 0755
 install_file "$REPO_DIR/files/usr/local/sbin/zero-hdmi-lightdm-policy" /usr/local/sbin/zero-hdmi-lightdm-policy 0755
+install_file "$REPO_DIR/scripts/setup-user-services.sh" /usr/local/libexec/cardputer-zero/setup-user-services.sh 0755
 
 install_file "$REPO_DIR/files/usr/share/xgreeters/cardputer-zero-pi-greeter-labwc.desktop" /usr/share/xgreeters/cardputer-zero-pi-greeter-labwc.desktop 0644
 install_file "$REPO_DIR/files/etc/systemd/system/zero-greetd.service" /etc/systemd/system/zero-greetd.service 0644
 install_file "$REPO_DIR/files/etc/systemd/system/zero-key-policy.service" /etc/systemd/system/zero-key-policy.service 0644
 install_file "$REPO_DIR/files/etc/systemd/system/zero-hdmi-lightdm-policy.service" /etc/systemd/system/zero-hdmi-lightdm-policy.service 0644
+install_file "$REPO_DIR/files/etc/systemd/system/plymouth-quit-wait.service.d/10-cardputer-zero-order.conf" /etc/systemd/system/plymouth-quit-wait.service.d/10-cardputer-zero-order.conf 0644
 install_file "$REPO_DIR/files/etc/systemd/system/lightdm.service.d/10-cardputer-zero-hdmi.conf" /etc/systemd/system/lightdm.service.d/10-cardputer-zero-hdmi.conf 0644
 install_file "$REPO_DIR/files/etc/systemd/user/zero-polkit-agent.service" /etc/systemd/user/zero-polkit-agent.service 0644
 install_file "$REPO_DIR/files/etc/tmpfiles.d/cardputer-zero-xwayland.conf" /etc/tmpfiles.d/cardputer-zero-xwayland.conf 0644
@@ -86,6 +89,7 @@ sh "$REPO_DIR/scripts/setup-session.sh" "$ROOT"
 sh "$REPO_DIR/scripts/setup-udev.sh" "$ROOT"
 sh "$REPO_DIR/scripts/setup-lightdm-policy.sh" "$ROOT"
 sh "$REPO_DIR/scripts/setup-greetd.sh" "$ROOT"
+sh "$REPO_DIR/scripts/setup-user-services.sh" "$ROOT"
 sh "$REPO_DIR/scripts/setup-quiet-boot.sh" "$ROOT"
 
 # Older builds installed NOPASSWD sudoers entries for zero-helper. The
