@@ -11,9 +11,6 @@
 
   <keyboard>
     <numlock>off</numlock>
-    <keybind key="Tab">
-      <action name="Execute" command="/usr/local/bin/zero-shell-control tasks" />
-    </keybind>
   </keyboard>
 
   <mouse>

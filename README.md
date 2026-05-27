@@ -223,10 +223,12 @@ Supported values are `30s`, `1min`, `2min`, `5min`, and `never`. Keyboard input
 is handled through labwc/libinput and wakes the output through `swayidle`'s
 `resume` hook.
 
-### Global Tab/Esc Policy
+### Global Esc Policy
 
 When a foreground app has keyboard focus, ZeroShell cannot receive global key
-events. `cardputer-zero-os` therefore owns the device-level key policy.
+events. `cardputer-zero-os` therefore owns the device-level Esc policy. `Tab`
+is delivered to the focused app and belongs to ZeroShell only when ZeroShell
+already has focus.
 
 `zero-key-policy.service` runs as root because it listens to the internal
 keyboard device before and after login and may need to activate the visible Zero
@@ -237,10 +239,6 @@ authenticated user and calls `zero-shell-control` inside that user's Wayland
 runtime.
 
 ```text
-Tab
-  -> zero-shell-control tasks
-  -> ZeroShell toggles running tasks
-
 short Esc
   -> zero-shell-control minimize-active
   -> ZeroShell is focused fullscreen and the foreground app remains a task
