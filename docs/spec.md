@@ -12,6 +12,7 @@ In scope:
 - PAM authentication for existing users,
 - real logind user session launch,
 - labwc session configuration,
+- internal-screen idle policy wiring through standard Wayland tools,
 - internal keyboard XKB profile,
 - global Zero keyboard policy,
 - device permission setup,
@@ -142,6 +143,29 @@ Role:
 - set `XDG_SESSION_TYPE=wayland`,
 - set `XDG_SEAT=seat-cardputer-zero`,
 - start `/opt/cardputer-zero-shell/bin/zero-shell-wayland`.
+
+### cardputer-zero-idle
+
+Path:
+
+```text
+/usr/local/bin/cardputer-zero-idle
+```
+
+Role:
+
+- run inside the authenticated internal Wayland session,
+- read `~/.config/cardputer-zero/session/display-power.json`,
+- start the standard `swayidle` daemon with `wlopm` off/on commands,
+- keep the screen on when the user selects `never`,
+- turn the output back on when the helper exits.
+
+Non-role:
+
+- custom power-manager implementation,
+- direct input-device ownership,
+- root-only display policy,
+- HDMI desktop power policy.
 
 ### zero-key-policy.service
 

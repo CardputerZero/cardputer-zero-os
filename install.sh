@@ -45,6 +45,7 @@ install_tree_files() {
 
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-lightdm-labwc" /usr/local/bin/cardputer-zero-lightdm-labwc 0755
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-greeter-session" /usr/local/bin/cardputer-zero-greeter-session 0755
+install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-idle" /usr/local/bin/cardputer-zero-idle 0755
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-labwc-session" /usr/local/bin/cardputer-zero-labwc-session 0755
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-shell-session" /usr/local/bin/cardputer-zero-shell-session 0755
 install_file "$REPO_DIR/files/usr/local/bin/cardputer-zero-session" /usr/local/bin/cardputer-zero-session 0755
@@ -78,6 +79,8 @@ install_tree_files "$REPO_DIR/files/usr/share/X11" /usr/share/X11 0644
 
 need_live_command pkexec "polkitd/policykit-1"
 need_live_command dtc "device-tree-compiler"
+need_live_command swayidle "swayidle"
+need_live_command wlopm "wlopm"
 if [ -z "$ROOT" ]; then
   sh "$REPO_DIR/scripts/setup-internal-drm-display.sh"
 fi

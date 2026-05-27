@@ -29,6 +29,7 @@ cardputer-zero-session
   -> cardputer-zero-labwc-session
   -> labwc on /dev/dri/cardputer-zero-internal
   -> cardputer-zero-shell-session
+  -> cardputer-zero-idle
   -> zero-window-agent
   -> /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
@@ -39,6 +40,15 @@ cardputer-zero-session
 WLR_DRM_DEVICES=/dev/dri/cardputer-zero-internal
 WLR_BACKENDS=drm,libinput
 WLR_RENDERER=pixman
+```
+
+`cardputer-zero-shell-session` also starts `cardputer-zero-idle` when present.
+That helper does not implement a custom power manager. It wires the user's
+screen-timeout preference to the standard wlroots tools `swayidle` and `wlopm`.
+The preference file is:
+
+```text
+~/.config/cardputer-zero/session/display-power.json
 ```
 
 ## Boundary

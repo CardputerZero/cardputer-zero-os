@@ -39,6 +39,7 @@ rm -f /usr/local/bin/zero-polkit-agent
 rm -f /usr/local/bin/zero-polkit-prompt-wayland
 rm -f /usr/local/bin/cardputer-zero-lightdm-labwc
 rm -f /usr/local/bin/cardputer-zero-greeter-session
+rm -f /usr/local/bin/cardputer-zero-idle
 rm -f /usr/local/bin/cardputer-zero-labwc-session
 rm -f /usr/local/bin/cardputer-zero-shell-session
 rm -f /usr/local/bin/cardputer-zero-session

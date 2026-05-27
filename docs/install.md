@@ -6,7 +6,8 @@
 sudo apt-get install \
   build-essential pkg-config labwc wayland-protocols libpam0g-dev \
   device-tree-compiler libglib2.0-dev libpolkit-agent-1-dev \
-  libpolkit-gobject-1-dev libwayland-dev libxkbcommon-dev
+  libpolkit-gobject-1-dev libwayland-dev libxkbcommon-dev \
+  swayidle wlopm
 ```
 
 ## Install
@@ -35,6 +36,7 @@ The installer:
 /usr/local/bin/zero-greeter-wayland
 /usr/local/libexec/cardputer-zero/zero-greeter-auth
 /usr/local/bin/cardputer-zero-greeter-session
+/usr/local/bin/cardputer-zero-idle
 /usr/local/bin/cardputer-zero-session
 /usr/local/bin/cardputer-zero-labwc-session
 /usr/local/bin/cardputer-zero-shell-session

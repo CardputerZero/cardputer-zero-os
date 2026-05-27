@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import os
+import shlex
+import signal
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+DEFAULT_TIMEOUT = os.environ.get("CARDPUTER_ZERO_IDLE_DEFAULT", "2min")
+POLL_SECONDS = float(os.environ.get("CARDPUTER_ZERO_IDLE_POLL_SECONDS", "2"))
+OUTPUT = os.environ.get("CARDPUTER_ZERO_IDLE_OUTPUT", "*")
+TIMEOUT_SECONDS = {
+    "30s": 30,
+    "1min": 60,
+    "2min": 120,
+    "5min": 300,
+    "never": None,
+}
+
+
+running = True
+
+
+def config_paths() -> tuple[Path, ...]:
+    explicit = os.environ.get("CARDPUTER_ZERO_IDLE_CONFIG")
+    if explicit:
+        return (Path(explicit).expanduser(),)
+    home = Path.home()
+    return (
+        home / ".config" / "cardputer-zero" / "session" / "display-power.json",
+        home / ".config" / "cardputer-zero" / "default-apps" / "settings.json",
+    )
+
+
+def report(message: str) -> None:
+    print(f"cardputer-zero-idle: {message}", file=sys.stderr, flush=True)
+
+
+def normalize_timeout(value: object) -> str:
+    text = str(value) if value is not None else ""
+    return text if text in TIMEOUT_SECONDS else DEFAULT_TIMEOUT
+
+
+def load_timeout() -> str:
+    for path in config_paths():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+        except FileNotFoundError:
+            continue
+        except (OSError, json.JSONDecodeError) as exc:
+            report(f"ignoring unreadable config {path}: {exc}")
+            continue
+        if not isinstance(data, dict):
+            continue
+        if "screen_timeout" in data:
+            return normalize_timeout(data.get("screen_timeout"))
+        if "display_sleep" in data:
+            return normalize_timeout(data.get("display_sleep"))
+    return normalize_timeout(DEFAULT_TIMEOUT)
+
+
+def command_available(command: str) -> bool:
+    return shutil.which(command) is not None
+
+
+def wlopm_on() -> None:
+    if not command_available("wlopm"):
+        return
+    subprocess.run(
+        ["wlopm", "--on", OUTPUT],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def start_swayidle(timeout_name: str) -> subprocess.Popen[str] | None:
+    seconds = TIMEOUT_SECONDS.get(timeout_name)
+    if seconds is None:
+        report("screen timeout disabled")
+        return None
+    if not command_available("swayidle"):
+        report("swayidle is not installed; screen timeout disabled")
+        return None
+    if not command_available("wlopm"):
+        report("wlopm is not installed; screen timeout disabled")
+        return None
+
+    quoted_output = shlex.quote(OUTPUT)
+    report(f"screen timeout {timeout_name} via swayidle/wlopm")
+    return subprocess.Popen(
+        [
+            "swayidle",
+            "-w",
+            "timeout",
+            str(seconds),
+            f"wlopm --off {quoted_output}",
+            "resume",
+            f"wlopm --on {quoted_output}",
+        ],
+        stdin=subprocess.DEVNULL,
+        text=True,
+    )
+
+
+def stop_child(child: subprocess.Popen[str] | None) -> None:
+    if child is None or child.poll() is not None:
+        return
+    child.terminate()
+    try:
+        child.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait(timeout=2)
+
+
+def handle_signal(_signum: int, _frame: object) -> None:
+    global running
+    running = False
+
+
+def main() -> int:
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+
+    child: subprocess.Popen[str] | None = None
+    active_timeout = ""
+
+    try:
+        while running:
+            wanted_timeout = load_timeout()
+            if wanted_timeout != active_timeout:
+                stop_child(child)
+                child = start_swayidle(wanted_timeout)
+                active_timeout = wanted_timeout
+                if wanted_timeout == "never":
+                    wlopm_on()
+            elif child is not None and child.poll() is not None:
+                report(f"swayidle exited with status {child.returncode}; restarting")
+                child = start_swayidle(active_timeout)
+            time.sleep(POLL_SECONDS)
+    finally:
+        stop_child(child)
+        wlopm_on()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

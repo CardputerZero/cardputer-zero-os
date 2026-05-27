@@ -79,6 +79,7 @@ Expected process shape:
 _greetd  labwc -C /etc/xdg/cardputer-zero-greeter-labwc
 _greetd  /usr/local/bin/zero-greeter-wayland
 pi       labwc -C /etc/xdg/cardputer-zero-labwc -S /usr/local/bin/cardputer-zero-shell-session
+pi       python3 /usr/local/bin/cardputer-zero-idle
 pi       zero-window-agent
 pi       /opt/cardputer-zero-shell/bin/zero-shell-wayland
 root     python3 /usr/local/bin/zero-key-policy
@@ -197,6 +198,31 @@ labwc is the compositor/window manager for the internal screen. Task identity is
 a compositor window, not a process id. That is why launchable apps must be
 Wayland or Xwayland clients.
 
+### Internal Screen Idle Policy
+
+The internal Zero session uses the standard wlroots tools `swayidle` and
+`wlopm` for screen blanking. `cardputer-zero-idle` is only session glue: it
+reads the user's display-power preference, starts `swayidle`, and lets `wlopm`
+turn the internal Wayland output off and back on.
+
+The canonical user preference file is:
+
+```text
+~/.config/cardputer-zero/session/display-power.json
+```
+
+with:
+
+```json
+{
+  "screen_timeout": "2min"
+}
+```
+
+Supported values are `30s`, `1min`, `2min`, `5min`, and `never`. Keyboard input
+is handled through labwc/libinput and wakes the output through `swayidle`'s
+`resume` hook.
+
 ### Global Tab/Esc Policy
 
 When a foreground app has keyboard focus, ZeroShell cannot receive global key
@@ -252,6 +278,7 @@ user app or shell
 | `files/etc/systemd/system/zero-key-policy.service` | Root-owned internal keyboard and seat activation policy service. |
 | `files/etc/systemd/system/zero-hdmi-lightdm-policy.service` | Keeps HDMI LightDM independent from the internal screen. |
 | `files/usr/local/bin/cardputer-zero-greeter-session` | Starts a small labwc greeter session and runs `zero-greeter-wayland`. |
+| `files/usr/local/bin/cardputer-zero-idle` | Session helper that wires user screen-timeout preferences to `swayidle` and `wlopm`. |
 | `greeter/zero-greeter-wayland.cpp` | 320x170 Wayland greeter UI. |
 | `greeter/zero-greeter-auth.cpp` | Restricted root helper for PAM authentication and user session launch. |
 | `files/etc/pam.d/cardputer-zero-greeter` | PAM stack that opens the `_greetd` greeter logind session. |

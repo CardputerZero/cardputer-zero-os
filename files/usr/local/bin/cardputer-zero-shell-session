@@ -7,6 +7,8 @@ AGENT_DIR=$RUNTIME_DIR/cardputer-zero
 AGENT_SOCKET=$AGENT_DIR/window-agent.sock
 AGENT_LOG=$AGENT_DIR/window-agent.log
 AGENT_PID=$AGENT_DIR/window-agent.pid
+IDLE_LOG=$AGENT_DIR/idle.log
+IDLE_PID=$AGENT_DIR/idle.pid
 
 start_zero_user_services() {
   command -v systemctl >/dev/null 2>&1 || return 0
@@ -20,10 +22,29 @@ start_zero_user_services() {
   done
 }
 
+start_zero_idle() {
+  [ "${CARDPUTER_ZERO_IDLE:-1}" = "1" ] || return 0
+  command -v cardputer-zero-idle >/dev/null 2>&1 || return 0
+
+  idle_running=0
+  if [ -r "$IDLE_PID" ]; then
+    old_pid=$(cat "$IDLE_PID" 2>/dev/null || true)
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+      idle_running=1
+    fi
+  fi
+
+  if [ "$idle_running" != "1" ]; then
+    cardputer-zero-idle >>"$IDLE_LOG" 2>&1 &
+    echo "$!" >"$IDLE_PID"
+  fi
+}
+
 mkdir -p "$AGENT_DIR"
 chmod 700 "$AGENT_DIR"
 
 start_zero_user_services
+start_zero_idle
 
 agent_running=0
 if [ -r "$AGENT_PID" ]; then
